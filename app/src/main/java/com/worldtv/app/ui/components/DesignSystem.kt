@@ -332,7 +332,6 @@ fun ChannelCard(
                     MetaTag(entry.countryCode.uppercase(), TagKind.Plain)
                 } else {
                     entry.languages.firstOrNull()?.let { MetaTag(it.lowercase(), TagKind.Plain) }
-                    if (entry.geoBlocked) MetaTag(stringResource(R.string.region_locked), TagKind.Region)
                 }
             }
         }
@@ -523,10 +522,8 @@ private fun NavItem(
 ) {
     val palette = LocalWt.current
     val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
     Column(
         modifier = modifier
-            .border(if (focused) 3.dp else 0.dp, palette.accent, RoundedCornerShape(16.dp))
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

@@ -3,6 +3,7 @@ package com.worldtv.app.ui
 import android.content.pm.ActivityInfo
 import android.view.OrientationEventListener
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -49,8 +51,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -74,6 +79,7 @@ import com.worldtv.app.ui.screens.HomePane
 import com.worldtv.app.ui.screens.PrivacyPane
 import com.worldtv.app.ui.screens.SettingsPane
 import com.worldtv.app.ui.theme.LocalWt
+import com.worldtv.app.ui.theme.Outfit
 import com.worldtv.app.ui.theme.Space
 import com.worldtv.app.ui.theme.WorldTvTheme
 import kotlinx.coroutines.launch
@@ -100,10 +106,12 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
     var heldLandscape by remember { mutableStateOf(false) }
     var preferPortrait by remember { mutableStateOf(false) }
     var forceLandscape by remember { mutableStateOf(false) }
+    var minimized by remember { mutableStateOf(false) }
     var tvFullscreen by remember { mutableStateOf(false) }
     val screen = navigator.current
     val currentEntry = queue.current
-    val inline = screen == AppScreen.Countries &&
+    val inline = !minimized &&
+        screen == AppScreen.Countries &&
         currentEntry != null &&
         catalog.selectedCodes.any { it.equals(currentEntry.countryCode, ignoreCase = true) }
     val inPlayer = screen == AppScreen.Player && currentEntry != null
@@ -129,6 +137,8 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
                 onToggleFavorite = request.onToggleFavorite,
                 onBack = request.onBack,
                 onToggleOrientation = request.onToggleOrientation,
+                onSwipeDown = request.onSwipeDown,
+                onSwipeUp = request.onSwipeUp,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -207,12 +217,52 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
         tvFullscreen = false
         forceLandscape = false
         preferPortrait = false
+        minimized = false
     }
 
     fun expandPlayback() {
+        minimized = false
         val entry = container.queue.state.value.current ?: return
-        catalogModel.selectKind(entry.kind)
+        if (catalog.kind != entry.kind) catalogModel.selectKind(entry.kind)
         catalogModel.setCountries(setOf(entry.countryCode))
+        if (heldLandscape) {
+            preferPortrait = false
+            forceLandscape = true
+        } else {
+            forceLandscape = false
+            preferPortrait = false
+        }
+        navigator.openCountries()
+    }
+
+    fun collapsePlayer() {
+        if (fullscreen) {
+            preferPortrait = true
+            forceLandscape = false
+            minimized = false
+            tvFullscreen = false
+            return
+        }
+        if (navigator.current == AppScreen.Player) {
+            closePlayer()
+            return
+        }
+        minimized = true
+    }
+
+    fun goLandscape() {
+        if (television) {
+            tvFullscreen = true
+            return
+        }
+        if (fullscreen) return
+        minimized = false
+        preferPortrait = false
+        forceLandscape = true
+    }
+
+    fun showCountries() {
+        minimized = false
         navigator.openCountries()
     }
 
@@ -238,6 +288,7 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
     }
 
     fun playInList(entries: List<MediaEntry>, entry: MediaEntry) {
+        minimized = false
         val index = entries.indexOfFirst { it.key == entry.key }.coerceAtLeast(0)
         container.queue.open(entries, index)
         if (entry.kind != ContentKind.RADIO) container.radio.pause()
@@ -269,6 +320,8 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
                     onToggleFavorite = { catalogModel.toggleFavorite(shown) },
                     onBack = ::toggleOrientation,
                     onToggleOrientation = ::toggleOrientation,
+                    onSwipeDown = ::collapsePlayer,
+                    onSwipeUp = ::goLandscape,
                 ),
             )
         }
@@ -308,6 +361,7 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
                 onDismissPlayback = ::dismissPlayback,
                 stage = stage,
                 embedPlayback = inline,
+                onShowCountries = ::showCountries,
             )
         } else {
             PhoneShell(
@@ -342,6 +396,7 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
                 onDismissPlayback = ::dismissPlayback,
                 stage = stage,
                 embedPlayback = inline,
+                onShowCountries = ::showCountries,
                 onRadioToggle = container.radio::toggle,
                 onRadioStop = container.radio::stop,
             )
@@ -377,6 +432,7 @@ private fun PhoneShell(
     onDismissPlayback: () -> Unit,
     stage: @Composable () -> Unit,
     embedPlayback: Boolean,
+    onShowCountries: () -> Unit,
     onRadioToggle: () -> Unit,
     onRadioStop: () -> Unit,
 ) {
@@ -417,7 +473,7 @@ private fun PhoneShell(
                 onClosePlayer = onClosePlayer,
                 onToggleOrientation = onToggleOrientation,
                 onBack = navigator::back,
-                onCountries = navigator::openCountries,
+                onCountries = onShowCountries,
                 onPrivacy = navigator::openPrivacy,
                 embedPlayback = embedPlayback,
                 stage = if (floating || cover) {
@@ -437,7 +493,9 @@ private fun PhoneShell(
                     onExpand = onExpandPlayback,
                     onClose = onDismissPlayback,
                     preview = stage,
-                    modifier = Modifier.align(Alignment.BottomCenter),
+                    modifier = Modifier.align(
+                        if (nowPlaying.kind == ContentKind.RADIO) Alignment.BottomCenter else Alignment.BottomEnd,
+                    ),
                 )
             }
         }
@@ -469,6 +527,7 @@ private fun TelevisionShell(
     onDismissPlayback: () -> Unit,
     stage: @Composable () -> Unit,
     embedPlayback: Boolean,
+    onShowCountries: () -> Unit,
 ) {
     val screen = navigator.current
     Row(Modifier.fillMaxSize()) {
@@ -477,7 +536,7 @@ private fun TelevisionShell(
                 current = screen,
                 kind = catalog.kind,
                 onCatalog = { navigator.openSection(AppScreen.Catalog) },
-                onCountries = navigator::openCountries,
+                onCountries = onShowCountries,
                 onFavorites = { navigator.openSection(AppScreen.Favorites) },
                 onSettings = { navigator.openSection(AppScreen.Settings) },
                 onKind = catalogModel::selectKind,
@@ -501,7 +560,7 @@ private fun TelevisionShell(
                 onClosePlayer = onClosePlayer,
                 onToggleOrientation = onToggleOrientation,
                 onBack = navigator::back,
-                onCountries = navigator::openCountries,
+                onCountries = onShowCountries,
                 onPrivacy = navigator::openPrivacy,
                 embedPlayback = embedPlayback,
                 stage = if (floating || cover) {
@@ -521,7 +580,9 @@ private fun TelevisionShell(
                     onExpand = onExpandPlayback,
                     onClose = onDismissPlayback,
                     preview = stage,
-                    modifier = Modifier.align(Alignment.BottomCenter),
+                    modifier = Modifier.align(
+                        if (nowPlaying.kind == ContentKind.RADIO) Alignment.BottomCenter else Alignment.BottomEnd,
+                    ),
                 )
             }
             SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter).padding(Space.lg))
@@ -628,7 +689,21 @@ private fun TvRail(
             .padding(Space.lg),
         verticalArrangement = Arrangement.spacedBy(Space.sm),
     ) {
-        Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Image(
+                painter = painterResource(R.drawable.ic_zenvu_logo),
+                contentDescription = null,
+                modifier = Modifier.size(40.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                stringResource(R.string.app_name),
+                style = MaterialTheme.typography.headlineSmall,
+                fontFamily = Outfit,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.03).em,
+            )
+        }
         Spacer(Modifier.height(Space.md))
         ContentKind.entries.forEach { item ->
             RailButton(
@@ -693,4 +768,6 @@ private data class StageRequest(
     val onToggleFavorite: () -> Unit,
     val onBack: () -> Unit,
     val onToggleOrientation: () -> Unit,
+    val onSwipeDown: () -> Unit,
+    val onSwipeUp: () -> Unit,
 )

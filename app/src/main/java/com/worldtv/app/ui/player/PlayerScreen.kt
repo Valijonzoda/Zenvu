@@ -7,7 +7,10 @@ import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
+import android.view.LayoutInflater
+import android.view.View
 import android.view.WindowManager
+import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -45,6 +48,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -52,7 +56,6 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.StayCurrentLandscape
 import androidx.compose.material.icons.filled.StayCurrentPortrait
 import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -63,11 +66,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -176,6 +181,8 @@ fun PlaybackStage(
     onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
     onToggleOrientation: () -> Unit,
+    onSwipeDown: () -> Unit = {},
+    onSwipeUp: () -> Unit = {},
     compact: Boolean = false,
     commands: PlaybackCommands? = null,
     modifier: Modifier = Modifier,
@@ -189,6 +196,8 @@ fun PlaybackStage(
             fullscreen = fullscreen,
             onToggleFavorite = onToggleFavorite,
             onBack = onBack,
+            onSwipeDown = onSwipeDown,
+            onSwipeUp = onSwipeUp,
             compact = compact,
             commands = commands,
             modifier = modifier,
@@ -204,6 +213,8 @@ fun PlaybackStage(
             onToggleFavorite = onToggleFavorite,
             onBack = onBack,
             onToggleOrientation = onToggleOrientation,
+            onSwipeDown = onSwipeDown,
+            onSwipeUp = onSwipeUp,
             compact = compact,
             commands = commands,
             modifier = modifier,
@@ -222,6 +233,8 @@ private fun VideoStage(
     onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
     onToggleOrientation: () -> Unit,
+    onSwipeDown: () -> Unit,
+    onSwipeUp: () -> Unit,
     compact: Boolean,
     commands: PlaybackCommands?,
     modifier: Modifier = Modifier,
@@ -239,13 +252,16 @@ private fun VideoStage(
     var chromeTick by remember(entry.key) { mutableIntStateOf(0) }
     val player = remember(context) { buildPlayer(context.applicationContext, audioOnly = false) }
     DisposableEffect(player) {
-        commands?.toggle = {
-            if (player.isPlaying) player.pause() else player.play()
+        onDispose { player.release() }
+    }
+    DisposableEffect(player, useEmbed) {
+        if (!useEmbed) {
+            commands?.toggle = {
+                if (player.isPlaying) player.pause() else player.play()
+            }
         }
         onDispose {
-            commands?.toggle = {}
-            commands?.playing?.value = false
-            player.release()
+            if (!useEmbed) commands?.toggle = {}
         }
     }
     DisposableEffect(player, entry.key, urlIndex, autoFallback) {
@@ -274,7 +290,11 @@ private fun VideoStage(
         onDispose { player.removeListener(listener) }
     }
     LaunchedEffect(entry.key, urlIndex, retryToken, useEmbed) {
-        if (useEmbed) return@LaunchedEffect
+        if (useEmbed) {
+            player.stop()
+            player.clearMediaItems()
+            return@LaunchedEffect
+        }
         val direct = plan as? PlaybackPlan.Direct ?: return@LaunchedEffect
         val url = direct.urls.getOrNull(urlIndex) ?: return@LaunchedEffect
         error = null
@@ -293,7 +313,7 @@ private fun VideoStage(
         chrome = false
     }
     if (!compact && entry.kind != ContentKind.RADIO) KeepScreenOn()
-    val stageModifier = if (direct) modifier.background(Color.Black) else modifier.background(artBrush(artIndex(entry.key)))
+    val stageModifier = (if (direct) modifier.background(Color.Black) else modifier.background(artBrush(artIndex(entry.key)))).clipToBounds()
     Box(stageModifier) {
         when {
             plan is PlaybackPlan.Unsupported -> {
@@ -308,32 +328,41 @@ private fun VideoStage(
                 if (embedUrl == null) {
                     Text(stringResource(R.string.unsupported_title), color = Color.White, modifier = Modifier.align(Alignment.Center).padding(20.dp))
                 } else {
-                    EmbedView(embedUrl)
+                    EmbedView(embedUrl, commands)
                 }
             }
             else -> {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { viewContext ->
-                        PlayerView(viewContext).apply {
-                            useController = false
-                            this.player = player
-                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                        }
-                    },
-                    update = { it.player = player },
-                )
+                key(compact, fullscreen) {
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { viewContext ->
+                            (LayoutInflater.from(viewContext).inflate(R.layout.texture_player_view, null) as PlayerView).apply {
+                                this.player = player
+                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                            }
+                        },
+                        update = { view ->
+                            view.player = player
+                            view.layoutParams = android.view.ViewGroup.LayoutParams(
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            )
+                            view.requestLayout()
+                        },
+                        onRelease = { it.player = null },
+                    )
+                }
             }
         }
-        if (!compact && (!useEmbed || !chrome)) {
+        if (!compact) {
             GestureLayer(
-                fullscreen = fullscreen,
                 onTap = {
                     chrome = !chrome
                     if (chrome) chromeTick += 1
                 },
-                onSwipeDown = onToggleOrientation,
+                onSwipeDown = onSwipeDown,
+                onSwipeUp = onSwipeUp,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -399,10 +428,7 @@ private fun VideoStage(
                 modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
             )
         }
-        if (!compact && entry.geoBlocked && chrome) {
-            GeoNote(Modifier.align(Alignment.BottomStart).padding(start = 12.dp, end = 64.dp, bottom = 12.dp))
         }
-    }
 }
 
 @Composable
@@ -414,6 +440,8 @@ private fun RadioStage(
     fullscreen: Boolean,
     onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
+    onSwipeDown: () -> Unit,
+    onSwipeUp: () -> Unit,
     compact: Boolean,
     commands: PlaybackCommands?,
     modifier: Modifier = Modifier,
@@ -441,6 +469,14 @@ private fun RadioStage(
     }
     val granted = notificationsGranted(context) || notificationsAllowed || Build.VERSION.SDK_INT < 33
     Box(modifier.background(artBrush(artIndex(entry.key)))) {
+        if (!compact) {
+            GestureLayer(
+                onTap = {},
+                onSwipeDown = onSwipeDown,
+                onSwipeUp = onSwipeUp,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         if (compact) {
             Equalizer(playing = radio.playing, modifier = Modifier.align(Alignment.Center).height(36.dp))
             return@Box
@@ -510,15 +546,17 @@ private fun RadioStage(
 
 @Composable
 private fun GestureLayer(
-    fullscreen: Boolean,
     onTap: () -> Unit,
     onSwipeDown: () -> Unit,
+    onSwipeUp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier.pointerInput(fullscreen) {
+        modifier.pointerInput(Unit) {
+            val threshold = 72.dp.toPx()
             awaitEachGesture {
                 val down = awaitFirstDown()
+                var dragX = 0f
                 var dragY = 0f
                 var dragged = false
                 while (true) {
@@ -526,16 +564,17 @@ private fun GestureLayer(
                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
                     if (!change.pressed) {
                         if (!dragged) onTap()
-                        else if (fullscreen && dragY > 72.dp.toPx()) onSwipeDown()
+                        else if (abs(dragY) > abs(dragX) && abs(dragY) > threshold) {
+                            if (dragY > 0f) onSwipeDown() else onSwipeUp()
+                        }
                         break
                     }
-                    val delta = change.positionChange().y
-                    if (delta != 0f) {
-                        dragY += delta
-                        if (abs(dragY) > viewConfiguration.touchSlop) {
-                            dragged = true
-                            change.consume()
-                        }
+                    val delta = change.positionChange()
+                    dragX += delta.x
+                    dragY += delta.y
+                    if (abs(dragY) > viewConfiguration.touchSlop && abs(dragY) > abs(dragX)) {
+                        dragged = true
+                        change.consume()
                     }
                 }
             }
@@ -585,21 +624,6 @@ private fun StageButton(
 }
 
 @Composable
-private fun GeoNote(modifier: Modifier = Modifier) {
-    val palette = LocalWt.current
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(palette.warnBg)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Icon(Icons.Outlined.Warning, contentDescription = null, tint = palette.warnText, modifier = Modifier.size(18.dp))
-        Text(stringResource(R.string.geo_note), color = palette.warnText, fontSize = 13.sp, fontFamily = Outfit)
-    }
-}
-
-@Composable
 private fun Equalizer(playing: Boolean, modifier: Modifier = Modifier) {
     val reduce = reducedMotion()
     val transition = rememberInfiniteTransition(label = "eq")
@@ -629,33 +653,159 @@ private fun Equalizer(playing: Boolean, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun EmbedView(url: String) {
+private fun EmbedView(url: String, commands: PlaybackCommands?) {
+    var webView by remember { mutableStateOf<WebView?>(null) }
     AndroidView(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().clipToBounds(),
         factory = { context ->
             WebView(context).apply {
-                setBackgroundColor(android.graphics.Color.BLACK)
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 settings.mediaPlaybackRequiresUserGesture = false
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = true
-                webChromeClient = WebChromeClient()
+                settings.userAgentString = settings.userAgentString
+                    .replace("; wv", "")
+                    .replace("Version/4.0 ", "")
+                CookieManager.getInstance().setAcceptCookie(true)
+                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                webChromeClient = object : WebChromeClient() {
+                    override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
+                        callback?.onCustomViewHidden()
+                    }
+                }
                 webViewClient = WebViewClient()
             }
         },
-        update = { webView ->
-            if (webView.tag != url) {
-                webView.tag = url
-                webView.loadUrl(url)
+        update = { view ->
+            webView = view
+            view.layoutParams = android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            )
+            view.requestLayout()
+            if (view.tag != url) {
+                view.tag = url
+                view.loadDataWithBaseURL(
+                    "https://www.youtube-nocookie.com",
+                    embedDocument(url),
+                    "text/html",
+                    "UTF-8",
+                    null,
+                )
             }
         },
         onRelease = { it.destroy() },
     )
+    DisposableEffect(webView, commands) {
+        val view = webView
+        val toggle = if (view != null && commands != null) {
+            commands.playing.value = true
+            {
+                if (commands.playing.value) {
+                    view.onPause()
+                    commands.playing.value = false
+                } else {
+                    view.onResume()
+                    commands.playing.value = true
+                }
+            }
+        } else {
+            null
+        }
+        if (toggle != null && commands != null) commands.toggle = toggle
+        onDispose {
+            if (toggle != null && commands?.toggle === toggle) commands.toggle = {}
+        }
+    }
+}
+
+private fun embedDocument(url: String): String {
+    val source = url.replace("\"", "&quot;")
+    return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta name="referrer" content="strict-origin-when-cross-origin">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          html,body{margin:0;padding:0;height:100%;background:#000;overflow:hidden}
+          iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+        </style>
+        </head>
+        <body>
+        <iframe src="$source" referrerpolicy="strict-origin-when-cross-origin"
+          allow="autoplay; encrypted-media; picture-in-picture"></iframe>
+        </body>
+        </html>
+    """.trimIndent()
 }
 
 @Composable
 fun FloatingPlayer(
+    entry: MediaEntry,
+    countryName: String,
+    commands: PlaybackCommands,
+    onExpand: () -> Unit,
+    onClose: () -> Unit,
+    preview: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (entry.kind == ContentKind.RADIO) {
+        RadioFloat(entry, countryName, commands, onExpand, onClose, preview, modifier)
+    } else {
+        VideoFloat(commands, onExpand, onClose, preview, modifier)
+    }
+}
+
+@Composable
+private fun VideoFloat(
+    commands: PlaybackCommands,
+    onExpand: () -> Unit,
+    onClose: () -> Unit,
+    preview: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val playing by commands.playing.collectAsStateWithLifecycle()
+    val shape = RoundedCornerShape(18.dp)
+    Box(
+        modifier
+            .padding(end = 12.dp, bottom = 12.dp)
+            .fillMaxWidth(0.78f)
+            .aspectRatio(16f / 9f)
+            .shadow(18.dp, shape)
+            .clip(shape)
+            .background(Color.Black),
+    ) {
+        preview()
+        Box(Modifier.fillMaxSize().clickable(onClick = onExpand))
+        FloatIcon(
+            icon = Icons.Filled.OpenInFull,
+            description = stringResource(R.string.full_screen),
+            onClick = onExpand,
+            tint = Color.White,
+            modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
+        )
+        FloatIcon(
+            icon = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+            description = stringResource(if (playing) R.string.pause else R.string.play),
+            onClick = commands.toggle,
+            tint = Color.White,
+            modifier = Modifier.align(Alignment.BottomStart).padding(6.dp),
+        )
+        FloatIcon(
+            icon = Icons.Filled.Close,
+            description = stringResource(R.string.stop),
+            onClick = onClose,
+            tint = Color.White,
+            modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
+        )
+    }
+}
+
+@Composable
+private fun RadioFloat(
     entry: MediaEntry,
     countryName: String,
     commands: PlaybackCommands,
@@ -702,8 +852,9 @@ fun FloatingPlayer(
             icon = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
             description = stringResource(if (playing) R.string.pause else R.string.play),
             onClick = commands.toggle,
+            scrim = false,
         )
-        FloatIcon(Icons.Filled.Close, stringResource(R.string.stop), onClose)
+        FloatIcon(Icons.Filled.Close, stringResource(R.string.stop), onClose, scrim = false)
     }
 }
 
@@ -712,16 +863,20 @@ private fun FloatIcon(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     description: String,
     onClick: () -> Unit,
+    tint: Color? = null,
+    scrim: Boolean = true,
+    modifier: Modifier = Modifier,
 ) {
     val palette = LocalWt.current
     Box(
-        Modifier
-            .size(40.dp)
+        modifier
+            .size(36.dp)
             .clip(CircleShape)
+            .background(if (scrim) Color.Black.copy(alpha = 0.45f) else Color.Transparent)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = description, tint = palette.heading, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = description, tint = tint ?: palette.heading, modifier = Modifier.size(20.dp))
     }
 }
 

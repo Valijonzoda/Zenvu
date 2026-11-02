@@ -39,7 +39,7 @@ object PlaybackPlanner {
 
     fun normalizeEmbed(url: String): String {
         val id = youtubeId(url) ?: return url.trim()
-        return "https://www.youtube-nocookie.com/embed/$id?autoplay=1&rel=0&modestbranding=1&playsinline=1"
+        return "https://www.youtube-nocookie.com/embed/$id?autoplay=1&rel=0&modestbranding=1&playsinline=1&fs=0&origin=https%3A%2F%2Fwww.youtube-nocookie.com"
     }
 
     fun failureMessage(entry: MediaEntry?): String {
