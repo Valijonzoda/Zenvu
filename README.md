@@ -5,7 +5,7 @@ Independent Android directory for live TV, online radio, and webcams. It runs on
 ## Download
 
 <!-- release:start -->
-APK appears here after the first push to `master`.
+**APK 1.0.1** (2026-11-02): [WorldTV-1.0.1.apk](https://github.com/Valijonzoda/World-TV/releases/download/v1.0.1/WorldTV-1.0.1.apk)
 <!-- release:end -->
 
 A push to `master` publishes a GitHub Release. The patch version increases by `0.0.1` unless the commit message contains `version: 1.2.0` or the workflow is started manually with a version.
