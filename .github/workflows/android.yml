@@ -1,0 +1,163 @@
+name: Android
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version x.y.z. Leave empty to add 0.0.1 to the latest release."
+        required: false
+        type: string
+
+concurrency:
+  group: worldtv-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install Android SDK
+        run: |
+          set -euo pipefail
+          SDK="$HOME/android-sdk"
+          mkdir -p "$SDK/cmdline-tools"
+          curl -fsSL -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+          rm -rf /tmp/cmdline-tools
+          unzip -q /tmp/cmdtools.zip -d /tmp
+          rm -rf "$SDK/cmdline-tools/latest"
+          mv /tmp/cmdline-tools "$SDK/cmdline-tools/latest"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platforms;android-37.2" "build-tools;37.0.0" "platform-tools"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+      - name: Choose release version
+        if: github.event_name != 'pull_request'
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          python3 - << 'PY' >> "$GITHUB_OUTPUT"
+          import os, re, subprocess
+          from datetime import datetime, timezone, timedelta
+
+          def parse(value):
+              major, minor, patch = value.split(".")
+              return int(major), int(minor), int(patch)
+
+          def fmt(parts):
+              return f"{parts[0]}.{parts[1]}.{parts[2]}"
+
+          explicit = os.environ.get("INPUT_VERSION", "").strip().lstrip("v")
+          message = subprocess.check_output(["git", "log", "-1", "--pretty=%B"], text=True)
+          specified = re.search(r"(?i)\bversion\s*[:=]\s*(\d+\.\d+\.\d+)\b", message)
+
+          if explicit:
+              version = explicit
+          elif specified:
+              version = specified.group(1)
+          else:
+              tags = subprocess.check_output(["git", "tag", "-l", "v*"], text=True).split()
+              found = []
+              for tag in tags:
+                  match = re.fullmatch(r"v(\d+\.\d+\.\d+)", tag)
+                  if match:
+                      found.append(parse(match.group(1)))
+              if found:
+                  major, minor, patch = max(found)
+              else:
+                  gradle = open("app/build.gradle.kts", encoding="utf-8").read()
+                  current = re.search(r'versionName = .*?("(\d+\.\d+\.\d+)")', gradle)
+                  major, minor, patch = parse(current.group(2) if current else "1.0.0")
+              version = fmt((major, minor, patch + 1))
+
+          if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+              raise SystemExit(f"Version must look like 1.2.3, got {version}")
+          major, minor, patch = parse(version)
+          code = major * 10000 + minor * 100 + patch
+          release_date = datetime.now(timezone(timedelta(hours=5))).strftime("%Y-%m-%d")
+          print(f"version={version}")
+          print(f"code={code}")
+          print(f"date={release_date}")
+          PY
+
+      - name: Test
+        run: ./gradlew test --stacktrace
+
+      - name: Build release APK
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          ./gradlew assembleRelease --stacktrace \
+            -PversionName="${{ steps.version.outputs.version }}" \
+            -PversionCode="${{ steps.version.outputs.code }}"
+          mkdir -p dist
+          apk=$(find app/build/outputs/apk/release -name '*.apk' ! -name '*unsigned*' | head -n 1)
+          cp "$apk" "dist/WorldTV-${{ steps.version.outputs.version }}.apk"
+
+      - name: Publish GitHub release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: World TV ${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          body: |
+            Release date: ${{ steps.version.outputs.date }}
+          files: dist/WorldTV-${{ steps.version.outputs.version }}.apk
+
+      - name: Put the APK link in the README
+        if: github.event_name != 'pull_request'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_DATE: ${{ steps.version.outputs.date }}
+        run: |
+          set -euo pipefail
+          python3 - << 'PY'
+          import os
+          import re
+          from pathlib import Path
+          version = os.environ["VERSION"]
+          release_date = os.environ["RELEASE_DATE"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          url = f"https://github.com/{repo}/releases/download/v{version}/WorldTV-{version}.apk"
+          block = (
+              "<!-- release:start -->\n"
+              f"**APK {version}** ({release_date}): [WorldTV-{version}.apk]({url})\n"
+              "<!-- release:end -->"
+          )
+          path = Path("README.md")
+          text = path.read_text(encoding="utf-8")
+          updated, count = re.subn(
+              r"<!-- release:start -->.*?<!-- release:end -->",
+              block,
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit("README is missing the release markers")
+          path.write_text(updated, encoding="utf-8")
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "Link APK v${VERSION} (${RELEASE_DATE}) [skip ci]"
+          git push

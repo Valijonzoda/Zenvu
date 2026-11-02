@@ -1,0 +1,30 @@
+[
+  {
+    "nanoid": "aVw200WgNaZoBO",
+    "name": "Flaix FM Andorra",
+    "sources": {
+      "streams": [
+        "https://streaming.giraweb.com/8020/stream"
+      ]
+    },
+    "languages": [
+      "cat"
+    ],
+    "country": "ad",
+    "isGeoBlocked": false
+  },
+  {
+    "nanoid": "QnmhBW1vfgQwGQ",
+    "name": "Flaixbac Andorra",
+    "sources": {
+      "streams": [
+        "https://streaming.giraweb.com/8010/stream"
+      ]
+    },
+    "languages": [
+      "cat"
+    ],
+    "country": "ad",
+    "isGeoBlocked": false
+  }
+]

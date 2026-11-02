@@ -1,0 +1,26 @@
+[
+  {
+    "nanoid": "SCMsrC75HzhVig",
+    "name": "Bab Al Qasr Resort Residence 19",
+    "sources": {
+      "youtube": [
+        "https://www.youtube-nocookie.com/embed/TmVRslhKB4c"
+      ]
+    },
+    "languages": [],
+    "country": "ae",
+    "isGeoBlocked": false
+  },
+  {
+    "nanoid": "aCR4lglFqYmPCa",
+    "name": "ELIRE by QUBE Development Construction",
+    "sources": {
+      "youtube": [
+        "https://www.youtube-nocookie.com/embed/FUL8FjI7w7Y"
+      ]
+    },
+    "languages": [],
+    "country": "ae",
+    "isGeoBlocked": false
+  }
+]

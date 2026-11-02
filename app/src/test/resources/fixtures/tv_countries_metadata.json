@@ -1,0 +1,37 @@
+{
+  "AD": {
+    "country": "Andorra",
+    "capital": "Andorra la Vella",
+    "timeZone": "Europe/Andorra",
+    "hasChannels": true,
+    "channelCount": 2
+  },
+  "AE": {
+    "country": "United Arab Emirates",
+    "capital": "Abu Dhabi",
+    "timeZone": "Asia/Dubai",
+    "hasChannels": true,
+    "channelCount": 32
+  },
+  "GB": {
+    "country": "United Kingdom",
+    "capital": "London",
+    "timeZone": "Europe/London",
+    "hasChannels": false,
+    "channelCount": 0
+  },
+  "UK": {
+    "country": "United Kingdom",
+    "capital": "London",
+    "timeZone": "Europe/London",
+    "hasChannels": true,
+    "channelCount": 221
+  },
+  "US": {
+    "country": "United States",
+    "capital": "Washington, D.C.",
+    "timeZone": "America/New_York",
+    "hasChannels": true,
+    "channelCount": 1414
+  }
+}
