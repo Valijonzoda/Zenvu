@@ -11,7 +11,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 
 fun buildPlayer(context: Context, audioOnly: Boolean): ExoPlayer {
     val httpFactory = DefaultHttpDataSource.Factory()
-        .setUserAgent("WorldTV/1.0 (Android) ExoPlayer")
+        .setUserAgent("Zenvu/1.0 (Android) ExoPlayer")
         .setAllowCrossProtocolRedirects(true)
         .setConnectTimeoutMs(12_000)
         .setReadTimeoutMs(20_000)

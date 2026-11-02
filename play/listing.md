@@ -2,7 +2,7 @@
 
 ## Title
 
-World TV
+Zenvu
 
 ## Short description
 
@@ -10,9 +10,9 @@ Browse live TV, radio, and webcams from public listings.
 
 ## Full description
 
-World TV is an independent directory for phones, Android TV, and Google TV. Switch between TV, radio, and webcams, search by name, and filter by country and language.
+Zenvu is an independent directory for phones, Android TV, and Google TV. Switch between TV, radio, and webcams, search by name, and filter by country and language.
 
-The catalog is downloaded from the public Famelack dataset. World TV does not host the video or audio, does not require an account, and does not claim that third-party channels or streams are officially licensed. Some listings only work in certain regions, and some webcam sources are embedded players that may refuse to play inside an app.
+The catalog is downloaded from the public Famelack dataset. Zenvu does not host the video or audio, does not require an account, and does not claim that third-party channels or streams are officially licensed. Some listings only work in certain regions, and some webcam sources are embedded players that may refuse to play inside an app.
 
 Favorites and settings stay on the device.
 

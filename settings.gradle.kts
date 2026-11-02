@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "World TV"
+rootProject.name = "Zenvu"
 include(":app")

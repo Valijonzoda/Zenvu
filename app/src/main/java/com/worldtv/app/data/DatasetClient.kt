@@ -49,7 +49,7 @@ class OkHttpDatasetClient(
     }
 
     companion object {
-        const val USER_AGENT = "WorldTV/1.0 (Android)"
+        const val USER_AGENT = "Zenvu/1.0 (Android)"
 
         fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)

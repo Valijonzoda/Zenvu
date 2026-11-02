@@ -1,10 +1,10 @@
-# World TV privacy policy
+# Zenvu privacy policy
 
-World TV is an independent directory for publicly listed live TV, radio, and webcam streams. It is not the official Famelack application and it is not operated by the channels, stations, or camera owners.
+Zenvu is an independent directory for publicly listed live TV, radio, and webcam streams. It is not the official Famelack application and it is not operated by the channels, stations, or camera owners.
 
 ## What stays on the device
 
-World TV does not ask for an account. It stores these items only on the phone or TV:
+Zenvu does not ask for an account. It stores these items only on the phone or TV:
 
 - favorite channels, stations, and webcams
 - theme and playback preferences
@@ -17,7 +17,7 @@ Clear saved listings in Settings. Uninstalling the app removes the rest.
 
 The app does not include an analytics or advertising SDK, and it does not sell personal information.
 
-To show the directory, World TV downloads JSON files from GitHub (`raw.githubusercontent.com`, repository `Valijonzoda/famelack-data`). GitHub can see the IP address of that request.
+To show the directory, Zenvu downloads JSON files from GitHub (`raw.githubusercontent.com`, repository `Valijonzoda/famelack-data`). GitHub can see the IP address of that request.
 
 When you play a listing, the device connects directly to the stream address in the dataset. The operator of that stream receives ordinary player traffic, including your IP address. Webcam listings in the current dataset are YouTube embed pages, so Google may also receive technical data when an embed loads.
 
@@ -28,8 +28,8 @@ Some listings are marked region locked in the dataset. Playback can fail when a 
 - Internet and network state, to download listings and open streams
 - Notifications, foreground media playback, and a wake lock, so radio can keep playing with a system control
 
-World TV does not request location, contacts, camera, or microphone access.
+Zenvu does not request location, contacts, camera, or microphone access.
 
 ## Contact
 
-World TV does not operate the streams. Copyright questions about a specific stream should go to the operator or, for listings taken from the Famelack dataset, to the contact published by that project (`dmca@famelack.com`).
+Zenvu does not operate the streams. Copyright questions about a specific stream should go to the operator or, for listings taken from the Famelack dataset, to the contact published by that project (`dmca@famelack.com`).

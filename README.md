@@ -1,6 +1,6 @@
-# World TV
+# Zenvu
 
-Independent Android directory for live TV, online radio, and webcams. It runs on phones, Android TV, and Google TV. World TV does not host streams and is not an official client of the channels or of Famelack.
+Independent Android directory for live TV, online radio, and webcams. It runs on phones, Android TV, and Google TV. Zenvu does not host streams and is not an official client of the channels or of Famelack.
 
 ## Download
 
@@ -60,7 +60,7 @@ Each country file is a JSON array. Every item uses the same fields:
 
 The United Kingdom is filed as `uk`, not `gb`. Channel counts on the country list come from `channelCount`.
 
-World TV requests:
+Zenvu requests:
 
 - `{kind}/raw/countries_metadata.json`
 - `{kind}/raw/countries/{lowercase-code}.json`
@@ -98,7 +98,7 @@ GitHub Actions builds the debug APK, release APK, and release AAB, runs unit tes
 
 ## Rights
 
-The dataset license allows reuse of the listing data. That license does not make the third-party streams official or owned by World TV. Some streams are region locked. See `play/privacy-policy.md` before publishing to Google Play.
+The dataset license allows reuse of the listing data. That license does not make the third-party streams official or owned by Zenvu. Some streams are region locked. See `play/privacy-policy.md` before publishing to Google Play.
 
 Outfit is included under the SIL Open Font License. See `third_party/outfit/OFL.txt`.
 
