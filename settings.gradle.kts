@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "WorldTV"
+rootProject.name = "World TV"
 include(":app")
