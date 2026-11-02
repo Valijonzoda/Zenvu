@@ -52,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
@@ -298,12 +299,17 @@ fun ChannelCard(
     val shape = RoundedCornerShape(20.dp)
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val cardColor = when {
+        !playing -> palette.surface
+        palette.dark -> lerp(palette.surface, palette.accent, 0.32f)
+        else -> palette.soft
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .pressScale(interaction)
             .clip(shape)
-            .background(if (playing) palette.soft else palette.surface)
+            .background(cardColor)
             .border(if (focused || playing) 2.dp else 0.dp, if (playing || focused) palette.accent else Color.Transparent, shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onOpen)
             .padding(horizontal = 14.dp, vertical = 12.dp),

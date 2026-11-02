@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -27,7 +26,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -144,48 +142,39 @@ fun CountryChannelsPane(
     val palette = LocalWt.current
     val country = state.countries.firstOrNull { it.code in state.selectedCodes }
     val channels = state.channels
-    val listState = rememberLazyListState()
-    androidx.compose.runtime.LaunchedEffect(playingKey, channels) {
-        val index = channels.indexOfFirst { it.key == playingKey }
-        if (index >= 0) listState.animateScrollToItem(index)
-    }
     Column(modifier.fillMaxSize().background(palette.bg)) {
-        if (playingKey != null) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .then(if (fullscreen) Modifier.weight(1f) else Modifier.aspectRatio(16f / 10f)),
-            ) {
-                player()
+        if (playingKey != null && fullscreen) {
+            Box(Modifier.fillMaxWidth().weight(1f)) { player() }
+        } else {
+            if (playingKey != null) {
+                Box(Modifier.fillMaxWidth().aspectRatio(16f / 10f)) { player() }
             }
-        }
-        if (!fullscreen) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = if (playingKey == null) 20.dp else 12.dp, bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = if (playingKey == null) 20.dp else 12.dp, bottom = 8.dp),
             ) {
-                item {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
-                        IconTile(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), onBack)
-                        Spacer(Modifier.padding(start = 12.dp))
-                        if (country != null) {
-                            FlagBadge(country.code, width = 48.dp, height = 34.dp)
-                            Spacer(Modifier.padding(start = 12.dp))
-                            Column {
-                                Text(country.name, color = palette.heading, fontFamily = Outfit, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
-                                val count = if (state.loadingChannels) country.channelCount else channels.size
-                                Text(
-                                    "${kindCount(state.kind, count)} · ${country.capital}",
-                                    color = palette.muted,
-                                    fontSize = 14.sp,
-                                    fontFamily = Outfit,
-                                )
-                            }
-                        }
+                IconTile(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), onBack)
+                Spacer(Modifier.padding(start = 12.dp))
+                if (country != null) {
+                    FlagBadge(country.code, width = 48.dp, height = 34.dp)
+                    Spacer(Modifier.padding(start = 12.dp))
+                    Column {
+                        Text(country.name, color = palette.heading, fontFamily = Outfit, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+                        val count = if (state.loadingChannels) country.channelCount else channels.size
+                        Text(
+                            "${kindCount(state.kind, count)} · ${country.capital}",
+                            color = palette.muted,
+                            fontSize = 14.sp,
+                            fontFamily = Outfit,
+                        )
                     }
                 }
+            }
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 when {
                     state.loadingChannels && channels.isEmpty() -> item { LoadingRows(card = true) }
                     state.channelsError != null && channels.isEmpty() -> item {

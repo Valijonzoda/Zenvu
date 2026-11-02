@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,6 +44,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -66,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -73,6 +76,7 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -99,6 +103,12 @@ import com.worldtv.app.ui.theme.Outfit
 import kotlin.math.abs
 import kotlin.math.sin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+
+class PlaybackCommands {
+    val playing = MutableStateFlow(false)
+    var toggle: () -> Unit = {}
+}
 
 @Composable
 fun PlayerScreen(
@@ -114,6 +124,7 @@ fun PlayerScreen(
     channels: List<MediaEntry>,
     favoriteKeys: Set<String>,
     onSelect: (MediaEntry) -> Unit,
+    stage: @Composable () -> Unit,
 ) {
     val queue by container.queue.state.collectAsStateWithLifecycle()
     val entry = queue.current
@@ -131,18 +142,7 @@ fun PlayerScreen(
                 .fillMaxWidth()
                 .then(if (fullscreen) Modifier.weight(1f) else Modifier.aspectRatio(if (entry.kind == ContentKind.RADIO) 1f / 0.8f else 16f / 10f)),
         ) {
-            PlaybackStage(
-                container = container,
-                entry = entry,
-                countryName = countryName,
-                favorite = favorite,
-                autoFallback = autoFallback,
-                fullscreen = fullscreen || television,
-                onToggleFavorite = { onToggleFavorite(entry) },
-                onBack = onBack,
-                onToggleOrientation = onToggleOrientation,
-                modifier = Modifier.fillMaxSize(),
-            )
+            stage()
         }
         if (!fullscreen) {
             LazyColumn(
@@ -176,6 +176,8 @@ fun PlaybackStage(
     onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
     onToggleOrientation: () -> Unit,
+    compact: Boolean = false,
+    commands: PlaybackCommands? = null,
     modifier: Modifier = Modifier,
 ) {
     if (entry.kind == ContentKind.RADIO) {
@@ -187,6 +189,8 @@ fun PlaybackStage(
             fullscreen = fullscreen,
             onToggleFavorite = onToggleFavorite,
             onBack = onBack,
+            compact = compact,
+            commands = commands,
             modifier = modifier,
         )
     } else {
@@ -200,6 +204,8 @@ fun PlaybackStage(
             onToggleFavorite = onToggleFavorite,
             onBack = onBack,
             onToggleOrientation = onToggleOrientation,
+            compact = compact,
+            commands = commands,
             modifier = modifier,
         )
     }
@@ -216,6 +222,8 @@ private fun VideoStage(
     onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
     onToggleOrientation: () -> Unit,
+    compact: Boolean,
+    commands: PlaybackCommands?,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalWt.current
@@ -230,11 +238,21 @@ private fun VideoStage(
     var chrome by remember(entry.key) { mutableStateOf(true) }
     var chromeTick by remember(entry.key) { mutableIntStateOf(0) }
     val player = remember(context) { buildPlayer(context.applicationContext, audioOnly = false) }
-    DisposableEffect(player) { onDispose { player.release() } }
+    DisposableEffect(player) {
+        commands?.toggle = {
+            if (player.isPlaying) player.pause() else player.play()
+        }
+        onDispose {
+            commands?.toggle = {}
+            commands?.playing?.value = false
+            player.release()
+        }
+    }
     DisposableEffect(player, entry.key, urlIndex, autoFallback) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 playing = isPlaying
+                commands?.playing?.value = isPlaying
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -274,7 +292,7 @@ private fun VideoStage(
         delay(3_000)
         chrome = false
     }
-    if (entry.kind != ContentKind.RADIO) KeepScreenOn()
+    if (!compact && entry.kind != ContentKind.RADIO) KeepScreenOn()
     val stageModifier = if (direct) modifier.background(Color.Black) else modifier.background(artBrush(artIndex(entry.key)))
     Box(stageModifier) {
         when {
@@ -308,7 +326,7 @@ private fun VideoStage(
                 )
             }
         }
-        if (!useEmbed || !chrome) {
+        if (!compact && (!useEmbed || !chrome)) {
             GestureLayer(
                 fullscreen = fullscreen,
                 onTap = {
@@ -319,10 +337,10 @@ private fun VideoStage(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        if (buffering && error == null && direct && chrome) {
+        if (!compact && buffering && error == null && direct && chrome) {
             CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
         }
-        if (error != null) {
+        if (!compact && error != null) {
             Column(Modifier.align(Alignment.Center).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(stringResource(R.string.player_error_title), color = Color.White, fontFamily = Outfit, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
@@ -337,7 +355,7 @@ private fun VideoStage(
                     TextButton(onClick = { useEmbed = true; error = null }) { Text(stringResource(R.string.try_embed)) }
                 }
             }
-        } else if (direct && chrome) {
+        } else if (!compact && direct && chrome) {
             PlayOrb(
                 playing = playing,
                 large = false,
@@ -348,7 +366,7 @@ private fun VideoStage(
                 modifier = Modifier.align(Alignment.Center),
             )
         }
-        if (chrome) {
+        if (!compact && chrome) {
             if (fullscreen) {
                 Row(
                     modifier = Modifier
@@ -381,7 +399,7 @@ private fun VideoStage(
                 modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
             )
         }
-        if (entry.geoBlocked && chrome) {
+        if (!compact && entry.geoBlocked && chrome) {
             GeoNote(Modifier.align(Alignment.BottomStart).padding(start = 12.dp, end = 64.dp, bottom = 12.dp))
         }
     }
@@ -396,6 +414,8 @@ private fun RadioStage(
     fullscreen: Boolean,
     onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
+    compact: Boolean,
+    commands: PlaybackCommands?,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalWt.current
@@ -411,8 +431,20 @@ private fun RadioStage(
         }
     }
     LaunchedEffect(entry.key) { container.radio.play(entry) }
+    LaunchedEffect(radio.playing) { commands?.playing?.value = radio.playing }
+    DisposableEffect(container) {
+        commands?.toggle = container.radio::toggle
+        onDispose {
+            commands?.toggle = {}
+            commands?.playing?.value = false
+        }
+    }
     val granted = notificationsGranted(context) || notificationsAllowed || Build.VERSION.SDK_INT < 33
     Box(modifier.background(artBrush(artIndex(entry.key)))) {
+        if (compact) {
+            Equalizer(playing = radio.playing, modifier = Modifier.align(Alignment.Center).height(36.dp))
+            return@Box
+        }
         Equalizer(playing = radio.playing, modifier = Modifier.align(Alignment.Center).height(80.dp))
         if (!granted) {
             Text(
@@ -620,6 +652,77 @@ private fun EmbedView(url: String) {
         },
         onRelease = { it.destroy() },
     )
+}
+
+@Composable
+fun FloatingPlayer(
+    entry: MediaEntry,
+    countryName: String,
+    commands: PlaybackCommands,
+    onExpand: () -> Unit,
+    onClose: () -> Unit,
+    preview: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val palette = LocalWt.current
+    val playing by commands.playing.collectAsStateWithLifecycle()
+    val shape = RoundedCornerShape(18.dp)
+    Row(
+        modifier = modifier
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .fillMaxWidth()
+            .height(68.dp)
+            .shadow(10.dp, shape)
+            .clip(shape)
+            .background(palette.surface)
+            .clickable(onClick = onExpand),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.width(108.dp).fillMaxHeight().background(Color.Black)) { preview() }
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(
+                entry.name,
+                color = palette.heading,
+                fontFamily = Outfit,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                countryName,
+                color = palette.muted,
+                fontFamily = Outfit,
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        FloatIcon(
+            icon = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+            description = stringResource(if (playing) R.string.pause else R.string.play),
+            onClick = commands.toggle,
+        )
+        FloatIcon(Icons.Filled.Close, stringResource(R.string.stop), onClose)
+    }
+}
+
+@Composable
+private fun FloatIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    onClick: () -> Unit,
+) {
+    val palette = LocalWt.current
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = description, tint = palette.heading, modifier = Modifier.size(22.dp))
+    }
 }
 
 @Composable

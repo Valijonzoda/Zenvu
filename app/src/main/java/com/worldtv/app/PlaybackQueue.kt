@@ -27,6 +27,10 @@ class PlaybackQueue {
         if (index >= 0) stateFlow.value = current.copy(index = index)
     }
 
+    fun clear() {
+        stateFlow.value = State()
+    }
+
     fun next() = shift(1)
 
     fun previous() = shift(-1)
