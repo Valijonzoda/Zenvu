@@ -22,7 +22,7 @@ class DataStoreSettingsRepository(context: Context) : SettingsRepository {
     override val settings: Flow<UserSettings> = store.data.map { prefs ->
         UserSettings(
             theme = prefs[Keys.THEME]?.let { runCatching { ThemeChoice.valueOf(it) }.getOrNull() }
-                ?: ThemeChoice.DARK,
+                ?: ThemeChoice.SYSTEM,
             autoFallbackStreams = prefs[Keys.AUTO_FALLBACK] ?: true,
             backgroundRadio = prefs[Keys.BACKGROUND_RADIO] ?: true,
         )

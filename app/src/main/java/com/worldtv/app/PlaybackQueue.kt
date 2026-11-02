@@ -21,6 +21,12 @@ class PlaybackQueue {
         stateFlow.value = State(entries, index.coerceIn(entries.indices))
     }
 
+    fun select(key: String) {
+        val current = stateFlow.value
+        val index = current.entries.indexOfFirst { it.key == key }
+        if (index >= 0) stateFlow.value = current.copy(index = index)
+    }
+
     fun next() = shift(1)
 
     fun previous() = shift(-1)

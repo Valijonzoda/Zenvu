@@ -84,7 +84,6 @@ class CatalogViewModel(
             countries = emptyList(),
             channels = emptyList(),
             channelQuery = "",
-            countryQuery = "",
             language = null,
             favoritesOnly = false,
             loadingCountries = true,

@@ -7,7 +7,7 @@ package com.worldtv.app.domain
 enum class ContentKind(val directory: String, val title: String) {
     TV("tv", "TV"),
     RADIO("radio", "Radio"),
-    WEBCAM("webcams", "Webcam"),
+    WEBCAM("webcams", "Webcams"),
 }
 
 data class Country(
@@ -39,7 +39,7 @@ enum class ThemeChoice {
 }
 
 data class UserSettings(
-    val theme: ThemeChoice = ThemeChoice.DARK,
+    val theme: ThemeChoice = ThemeChoice.SYSTEM,
     val autoFallbackStreams: Boolean = true,
     val backgroundRadio: Boolean = true,
 )

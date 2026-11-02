@@ -11,26 +11,24 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -41,7 +39,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -56,13 +53,16 @@ import com.worldtv.app.domain.MediaEntry
 import com.worldtv.app.domain.ThemeChoice
 import com.worldtv.app.domain.UserSettings
 import com.worldtv.app.ui.catalog.CatalogViewModel
+import com.worldtv.app.ui.components.WorldBottomBar
 import com.worldtv.app.ui.player.PlayerScreen
-import com.worldtv.app.ui.screens.CatalogPane
-import com.worldtv.app.ui.screens.CountryPane
+import com.worldtv.app.ui.screens.CountryChannelsPane
 import com.worldtv.app.ui.screens.FavoritesPane
+import com.worldtv.app.ui.screens.HomePane
 import com.worldtv.app.ui.screens.PrivacyPane
 import com.worldtv.app.ui.screens.SettingsPane
+import com.worldtv.app.ui.theme.LocalWt
 import com.worldtv.app.ui.theme.Space
+import com.worldtv.app.ui.theme.WorldTvTheme
 import kotlinx.coroutines.launch
 
 @Composable
@@ -101,17 +101,8 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
         else if (!navigator.back()) activity?.finish()
     }
 
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(280.dp)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f), Color.Transparent),
-                    ),
-                ),
-        )
+    WorldTvTheme(choice = settings.theme, television = television, kind = catalog.kind) {
+    Box(Modifier.fillMaxSize().background(LocalWt.current.bg)) {
         if (television) {
             TelevisionShell(
                 navigator = navigator,
@@ -160,6 +151,7 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
             )
         }
     }
+    }
 }
 
 @Composable
@@ -185,29 +177,18 @@ private fun PhoneShell(
     val showBar = screen != AppScreen.Player
     Scaffold(
         containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (showBar) {
-                NavigationBar {
-                    NavigationBarItem(
-                        selected = screen == AppScreen.Catalog || screen == AppScreen.Countries,
-                        onClick = { navigator.openSection(AppScreen.Catalog) },
-                        icon = { Icon(Icons.Filled.Home, contentDescription = null) },
-                        label = { Text(stringResource(R.string.nav_discover)) },
-                    )
-                    NavigationBarItem(
-                        selected = screen == AppScreen.Favorites,
-                        onClick = { navigator.openSection(AppScreen.Favorites) },
-                        icon = { Icon(Icons.Filled.Favorite, contentDescription = null) },
-                        label = { Text(stringResource(R.string.nav_favorites)) },
-                    )
-                    NavigationBarItem(
-                        selected = screen == AppScreen.Settings || screen == AppScreen.Privacy,
-                        onClick = { navigator.openSection(AppScreen.Settings) },
-                        icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
-                        label = { Text(stringResource(R.string.nav_settings)) },
-                    )
-                }
+                WorldBottomBar(
+                    explore = screen == AppScreen.Catalog || screen == AppScreen.Countries,
+                    favorites = screen == AppScreen.Favorites,
+                    settings = screen == AppScreen.Settings || screen == AppScreen.Privacy,
+                    onExplore = { navigator.openSection(AppScreen.Catalog) },
+                    onFavorites = { navigator.openSection(AppScreen.Favorites) },
+                    onSettings = { navigator.openSection(AppScreen.Settings) },
+                )
             }
         },
     ) { padding ->
@@ -229,16 +210,6 @@ private fun PhoneShell(
                 onCountries = navigator::openCountries,
                 onPrivacy = navigator::openPrivacy,
             )
-            if (radioEntry != null && screen != AppScreen.Player) {
-                MiniPlayer(
-                    entry = radioEntry,
-                    playing = radioPlaying,
-                    onOpen = { onOpen(listOf(radioEntry), radioEntry) },
-                    onToggle = onRadioToggle,
-                    onStop = onRadioStop,
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(Space.md),
-                )
-            }
         }
     }
 }
@@ -314,31 +285,29 @@ private fun ScreenBody(
 ) {
     val queue by container.queue.state.collectAsStateWithLifecycle()
     when (screen) {
-        AppScreen.Catalog -> CatalogPane(
+        AppScreen.Catalog -> HomePane(
             state = catalog,
-            television = television,
             onKind = catalogModel::selectKind,
-            onQuery = catalogModel::setChannelQuery,
-            onLanguage = catalogModel::setLanguage,
-            onFavoritesOnly = catalogModel::setFavoritesOnly,
+            onQuery = catalogModel::setCountryQuery,
             onRefresh = catalogModel::refresh,
-            onOpenCountries = onCountries,
+            onOpenCountry = { code ->
+                catalogModel.setCountries(setOf(code))
+                onCountries()
+            },
+        )
+        AppScreen.Countries -> CountryChannelsPane(
+            state = catalog,
+            onBack = onBack,
+            onRefresh = catalogModel::refresh,
             onOpen = onOpen,
             onToggleFavorite = catalogModel::toggleFavorite,
         )
-        AppScreen.Countries -> CountryPane(
-            state = catalog,
-            television = television,
-            onQuery = catalogModel::setCountryQuery,
-            onApply = { codes ->
-                catalogModel.setCountries(codes)
-                onBack()
-            },
-        )
         AppScreen.Favorites -> FavoritesPane(
             state = catalog,
-            television = television,
-            onOpen = onOpen,
+            onOpen = { entries, entry ->
+                if (catalog.kind != entry.kind) catalogModel.selectKind(entry.kind)
+                onOpen(entries, entry)
+            },
             onToggleFavorite = catalogModel::toggleFavorite,
         )
         AppScreen.Settings -> SettingsPane(
@@ -432,38 +401,5 @@ private fun RailButton(
             Spacer(Modifier.width(Space.md))
         }
         Text(label, style = MaterialTheme.typography.titleMedium)
-    }
-}
-
-@Composable
-private fun MiniPlayer(
-    entry: MediaEntry,
-    playing: Boolean,
-    onOpen: () -> Unit,
-    onToggle: () -> Unit,
-    onStop: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(20.dp))
-            .clickable(onClick = onOpen)
-            .padding(horizontal = Space.md, vertical = Space.sm),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(entry.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-            Text(stringResource(R.string.mode_radio), style = MaterialTheme.typography.labelMedium)
-        }
-        IconButton(onClick = onToggle) {
-            Icon(
-                if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = stringResource(if (playing) R.string.pause else R.string.play),
-            )
-        }
-        IconButton(onClick = onStop) {
-            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.stop))
-        }
     }
 }

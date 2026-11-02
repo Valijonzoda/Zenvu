@@ -1,152 +1,184 @@
 package com.worldtv.app.ui.components
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.outlined.AccountBalance
+import androidx.compose.material.icons.outlined.Explore
+import androidx.compose.material.icons.outlined.Face
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Radio
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.SportsSoccer
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Tv
+import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.LiveTv
-import androidx.compose.material.icons.filled.Radio
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material.icons.filled.WifiOff
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.worldtv.app.R
 import com.worldtv.app.domain.ContentKind
 import com.worldtv.app.domain.CountryFlags
-import com.worldtv.app.domain.LanguageNames
 import com.worldtv.app.domain.MediaEntry
-import com.worldtv.app.ui.theme.FavoriteColor
-import com.worldtv.app.ui.theme.Space
+import com.worldtv.app.ui.theme.LocalWt
+import com.worldtv.app.ui.theme.Outfit
 import kotlin.math.abs
 
+private val ArtGradients = listOf(
+    Color(0xFFFF512F) to Color(0xFFF09819),
+    Color(0xFF11998E) to Color(0xFF38EF7D),
+    Color(0xFFFC466B) to Color(0xFF3F5EFD),
+    Color(0xFF00C6FF) to Color(0xFF0072FF),
+    Color(0xFFF953C6) to Color(0xFFB91D73),
+    Color(0xFFFDC830) to Color(0xFFF37335),
+    Color(0xFF7F00FF) to Color(0xFFE100FF),
+    Color(0xFF00B09B) to Color(0xFF96C93D),
+)
+
+private val ArtIcons = listOf(
+    Icons.Outlined.Public,
+    Icons.Outlined.SportsSoccer,
+    Icons.Outlined.Face,
+    Icons.Outlined.MusicNote,
+    Icons.Outlined.Movie,
+    Icons.Outlined.AccountBalance,
+    Icons.Outlined.WbSunny,
+    Icons.Outlined.Videocam,
+)
+
+fun artIndex(key: String): Int = abs(key.hashCode()) % ArtGradients.size
+
+fun artBrush(index: Int): Brush {
+    val pair = ArtGradients[index % ArtGradients.size]
+    return Brush.linearGradient(listOf(pair.first, pair.second))
+}
+
+fun artEnd(index: Int): Color = ArtGradients[index % ArtGradients.size].second
+
+fun artIcon(index: Int): ImageVector = ArtIcons[index % ArtIcons.size]
+
+fun ContentKind.glyph(): ImageVector = when (this) {
+    ContentKind.TV -> Icons.Outlined.Tv
+    ContentKind.RADIO -> Icons.Outlined.Radio
+    ContentKind.WEBCAM -> Icons.Outlined.Videocam
+}
+
+fun Modifier.wtShadow(shape: RoundedCornerShape, elevation: Dp = 8.dp, dark: Boolean): Modifier {
+    val color = if (dark) Color(0x40000000) else Color(0x1A465AA0)
+    return shadow(elevation, shape, clip = false, ambientColor = color, spotColor = color)
+}
+
 @Composable
-fun WtSearchField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    placeholder: String,
-    modifier: Modifier = Modifier,
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = modifier.fillMaxWidth(),
-        placeholder = { Text(placeholder) },
-        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-        trailingIcon = if (value.isNotEmpty()) {
-            {
-                IconButton(onClick = { onValueChange("") }) {
-                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.clear_search))
-                }
-            }
-        } else {
-            null
-        },
-        singleLine = true,
-        shape = RoundedCornerShape(18.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-            focusedContainerColor = MaterialTheme.colorScheme.surface,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-        ),
-    )
+private fun Modifier.pressScale(interaction: MutableInteractionSource): Modifier {
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(if (pressed) 0.985f else 1f, tween(150), label = "press")
+    return graphicsLayer {
+        scaleX = scale
+        scaleY = scale
+    }
 }
 
 @Composable
 fun ModeSwitch(
     selected: ContentKind,
-    television: Boolean,
     onSelect: (ContentKind) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val palette = LocalWt.current
+    val shape = RoundedCornerShape(22.dp)
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(if (television) 64.dp else 52.dp)
-            .clip(RoundedCornerShape(28.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .wtShadow(shape, dark = palette.dark)
+            .background(palette.surface, shape)
+            .padding(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         ContentKind.entries.forEach { kind ->
             val interaction = remember { MutableInteractionSource() }
             val focused by interaction.collectIsFocusedAsState()
             val active = kind == selected
-            Row(
+            val itemShape = RoundedCornerShape(17.dp)
+            Column(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(if (active) MaterialTheme.colorScheme.primary else Color.Transparent)
-                    .border(
-                        width = if (focused) 3.dp else 0.dp,
-                        color = if (focused) MaterialTheme.colorScheme.secondary else Color.Transparent,
-                        shape = RoundedCornerShape(24.dp),
+                    .clip(itemShape)
+                    .then(
+                        if (active) {
+                            Modifier.shadow(
+                                8.dp,
+                                itemShape,
+                                ambientColor = palette.accent.copy(alpha = 0.45f),
+                                spotColor = palette.accent.copy(alpha = 0.55f),
+                            )
+                        } else {
+                            Modifier
+                        },
                     )
+                    .background(if (active) Brush.linearGradient(listOf(palette.accentFrom, palette.accent)) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
+                    .border(if (focused) 3.dp else 0.dp, palette.accent, itemShape)
                     .clickable(interactionSource = interaction, indication = null) { onSelect(kind) }
-                    .padding(horizontal = Space.sm),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(top = 12.dp, bottom = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Icon(
-                    imageVector = kind.icon(),
+                    kind.glyph(),
                     contentDescription = null,
-                    tint = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(if (television) 22.dp else 18.dp),
+                    tint = if (active) Color.White else palette.muted,
+                    modifier = Modifier.size(22.dp),
                 )
-                Spacer(Modifier.width(Space.sm))
                 Text(
-                    text = kind.title,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                    kind.title,
+                    color = if (active) Color.White else palette.muted,
+                    fontFamily = Outfit,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 13.sp,
                 )
             }
         }
@@ -154,278 +186,371 @@ fun ModeSwitch(
 }
 
 @Composable
-fun StatusBanner(text: String, offline: Boolean, modifier: Modifier = Modifier) {
-    Row(
+fun CountrySearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val palette = LocalWt.current
+    val shape = RoundedCornerShape(18.dp)
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.secondaryContainer)
-            .padding(horizontal = Space.lg, vertical = Space.md),
+            .wtShadow(shape, dark = palette.dark)
+            .then(if (focused) Modifier.border(2.dp, palette.accent, shape) else Modifier)
+            .height(52.dp)
+            .clip(shape)
+            .background(palette.surface),
+        textStyle = MaterialTheme.typography.bodyLarge.copy(color = palette.heading),
+        singleLine = true,
+        interactionSource = interaction,
+        decorationBox = { inner ->
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Outlined.Search, contentDescription = null, tint = palette.muted, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(10.dp))
+                Box(Modifier.weight(1f)) {
+                    if (value.isEmpty()) {
+                        Text(stringResource(R.string.search_country), color = palette.muted, style = MaterialTheme.typography.bodyLarge)
+                    }
+                    inner()
+                }
+            }
+        },
+    )
+}
+
+@Composable
+fun CountryRow(
+    code: String,
+    name: String,
+    capital: String,
+    countLabel: String,
+    onClick: () -> Unit,
+) {
+    val palette = LocalWt.current
+    val shape = RoundedCornerShape(20.dp)
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pressScale(interaction)
+            .wtShadow(shape, elevation = 2.dp, dark = palette.dark)
+            .clip(shape)
+            .background(palette.surface)
+            .border(if (focused) 3.dp else 0.dp, palette.accent, shape)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            imageVector = if (offline) Icons.Filled.WifiOff else Icons.Filled.ErrorOutline,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+        FlagBadge(code, width = 54.dp, height = 38.dp)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(name, style = MaterialTheme.typography.titleMedium, color = palette.heading, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(capital, color = palette.muted, fontSize = 13.sp, fontFamily = Outfit, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Text(
+            countLabel,
+            color = palette.accent,
+            fontFamily = Outfit,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 13.sp,
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(palette.soft)
+                .padding(horizontal = 11.dp, vertical = 5.dp),
         )
-        Spacer(Modifier.width(Space.md))
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
     }
 }
 
 @Composable
-fun EmptyState(
-    title: String,
-    body: String,
-    actionLabel: String? = null,
-    onAction: (() -> Unit)? = null,
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(Space.xxl),
-        horizontalAlignment = Alignment.CenterHorizontally,
+fun FlagBadge(code: String, width: Dp, height: Dp) {
+    Box(
+        modifier = Modifier
+            .size(width, height)
+            .shadow(6.dp, RoundedCornerShape(9.dp), clip = false, ambientColor = Color(0x4D3C50A0), spotColor = Color(0x4D3C50A0))
+            .clip(RoundedCornerShape(9.dp))
+            .background(LocalWt.current.surface2)
+            .border(1.dp, Color(0x1F3C50A0), RoundedCornerShape(9.dp)),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(title, style = MaterialTheme.typography.headlineSmall)
-        Spacer(Modifier.height(Space.sm))
-        Text(body, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (actionLabel != null && onAction != null) {
-            Spacer(Modifier.height(Space.lg))
-            Button(onClick = onAction) { Text(actionLabel) }
-        }
-    }
-}
-
-@Composable
-fun ErrorState(message: String, onRetry: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(Space.xxl),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(Icons.Filled.ErrorOutline, contentDescription = null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.error)
-        Spacer(Modifier.height(Space.md))
-        Text(message, style = MaterialTheme.typography.bodyLarge)
-        Spacer(Modifier.height(Space.lg))
-        Button(onClick = onRetry) {
-            Icon(Icons.Filled.Refresh, contentDescription = null)
-            Spacer(Modifier.width(Space.sm))
-            Text(stringResource(R.string.retry))
-        }
-    }
-}
-
-@Composable
-fun ChannelSkeletonGrid(count: Int = 6) {
-    val transition = rememberInfiniteTransition(label = "skeleton")
-    val alpha by transition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.75f,
-        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
-        label = "pulse",
-    )
-    Column(verticalArrangement = Arrangement.spacedBy(Space.md)) {
-        repeat(count) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(96.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha)),
-            )
-        }
+        Text(CountryFlags.emoji(code), fontSize = 22.sp, textAlign = TextAlign.Center)
     }
 }
 
 @Composable
 fun ChannelCard(
     entry: MediaEntry,
-    countryName: String,
     favorite: Boolean,
-    television: Boolean,
     onOpen: () -> Unit,
     onToggleFavorite: () -> Unit,
-    modifier: Modifier = Modifier,
+    favoriteTags: Boolean = false,
 ) {
+    val palette = LocalWt.current
+    val shape = RoundedCornerShape(22.dp)
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val shape = RoundedCornerShape(if (television) 16.dp else 22.dp)
-    Card(
-        onClick = onOpen,
-        modifier = modifier.fillMaxWidth(),
-        shape = shape,
-        interactionSource = interaction,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (television) 0.dp else 6.dp),
-        border = androidx.compose.foundation.BorderStroke(
-            width = if (focused) 3.dp else 1.dp,
-            color = if (focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.7f),
-        ),
-    ) {
-        if (television) {
-            Row(modifier = Modifier.height(118.dp), verticalAlignment = Alignment.CenterVertically) {
-                Artwork(entry.name, Modifier.width(168.dp).fillMaxHeight())
-                Column(modifier = Modifier.weight(1f).padding(Space.lg)) {
-                    Text(entry.name, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Spacer(Modifier.height(Space.xs))
-                    MetaLine(entry, countryName)
-                }
-                FavoriteButton(favorite, onToggleFavorite, Modifier.padding(end = Space.sm))
-            }
-        } else {
-            Column {
-                Box {
-                    Artwork(entry.name, Modifier.fillMaxWidth().aspectRatio(16f / 10f))
-                    FavoriteButton(
-                        favorite = favorite,
-                        onToggle = onToggleFavorite,
-                        modifier = Modifier.align(Alignment.TopEnd).padding(Space.xs),
-                    )
-                }
-                Column(Modifier.padding(Space.md)) {
-                    Text(entry.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Spacer(Modifier.height(Space.xs))
-                    MetaLine(entry, countryName)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MetaLine(entry: MediaEntry, countryName: String) {
-    val language = LanguageNames.labels(entry.languages)
-    Text(
-        text = countryName,
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
-    if (language.isNotBlank()) {
-        Text(
-            text = language,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-    if (entry.geoBlocked) {
-        Text(
-            text = stringResource(R.string.region_locked),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.secondary,
-        )
-    }
-}
-
-@Composable
-private fun FavoriteButton(favorite: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
-    IconButton(onClick = onToggle, modifier = modifier) {
-        Icon(
-            imageVector = if (favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-            contentDescription = stringResource(if (favorite) R.string.favorite_remove else R.string.favorite_add),
-            tint = if (favorite) FavoriteColor else MaterialTheme.colorScheme.onSurface,
-        )
-    }
-}
-
-@Composable
-fun Artwork(name: String, modifier: Modifier = Modifier) {
-    val colors = artworkColors(name)
-    Box(
-        modifier = modifier.background(Brush.linearGradient(colors)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = initials(name),
-            style = MaterialTheme.typography.headlineSmall,
-            color = Color.White,
-        )
-    }
-}
-
-@Composable
-fun CountryRow(
-    flag: String,
-    name: String,
-    detail: String,
-    selected: Boolean,
-    television: Boolean,
-    onClick: () -> Unit,
-) {
-    val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
+    val index = artIndex(entry.key)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface)
-            .border(
-                width = if (focused) 3.dp else 1.dp,
-                color = if (focused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                shape = RoundedCornerShape(18.dp),
-            )
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .padding(horizontal = Space.lg, vertical = if (television) Space.lg else Space.md),
+            .wtShadow(shape, elevation = 2.dp, dark = palette.dark)
+            .clip(shape)
+            .background(palette.surface)
+            .border(if (focused) 3.dp else 0.dp, palette.accent, shape)
+            .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(flag, style = MaterialTheme.typography.headlineSmall)
-        Spacer(Modifier.width(Space.md))
-        Column(Modifier.weight(1f)) {
-            Text(name, style = if (television) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium)
-            Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .pressScale(interaction)
+                .clickable(interactionSource = interaction, indication = null, onClick = onOpen),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ChannelArt(index, Modifier.size(76.dp))
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    entry.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = palette.heading,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(6.dp))
+                if (favoriteTags) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        MetaTag(entry.kind.title, TagKind.Plain)
+                        MetaTag(entry.countryCode.uppercase(), TagKind.Plain)
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        entry.languages.firstOrNull()?.let { MetaTag(it.lowercase(), TagKind.Plain) }
+                        if (entry.geoBlocked) MetaTag(stringResource(R.string.region_locked), TagKind.Region)
+                        if (entry.kind == ContentKind.TV) MetaTag(stringResource(R.string.tag_live), TagKind.Live)
+                    }
+                }
+            }
         }
-        if (selected) {
-            Text("●", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleLarge)
-        }
+        HeartButton(favorite, onToggleFavorite)
+    }
+}
+
+enum class TagKind { Plain, Region, Live }
+
+@Composable
+fun MetaTag(label: String, kind: TagKind) {
+    val palette = LocalWt.current
+    val bg = when (kind) {
+        TagKind.Plain -> palette.surface2
+        TagKind.Region -> palette.warnBg
+        TagKind.Live -> palette.liveSoft
+    }
+    val fg = when (kind) {
+        TagKind.Plain -> palette.text
+        TagKind.Region -> palette.regionText
+        TagKind.Live -> palette.live
+    }
+    Text(
+        label,
+        color = fg,
+        fontFamily = Outfit,
+        fontWeight = FontWeight.Medium,
+        fontSize = 12.sp,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(bg)
+            .padding(horizontal = 9.dp, vertical = 3.dp),
+    )
+}
+
+@Composable
+fun ChannelArt(index: Int, modifier: Modifier = Modifier, iconSize: Dp = 38.dp) {
+    val shape = RoundedCornerShape(17.dp)
+    Box(
+        modifier = modifier
+            .shadow(12.dp, shape, clip = false, ambientColor = artEnd(index).copy(alpha = 0.45f), spotColor = artEnd(index))
+            .clip(shape)
+            .background(artBrush(index)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .align(Alignment.BottomEnd)
+                .offset(x = 18.dp, y = 22.dp)
+                .size(70.dp)
+                .background(Color.White.copy(alpha = 0.22f), CircleShape),
+        )
+        Icon(artIcon(index), contentDescription = null, tint = Color.White, modifier = Modifier.size(iconSize))
     }
 }
 
 @Composable
-fun FilterChipButton(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
+fun HeartButton(favorite: Boolean, onToggle: () -> Unit) {
+    val palette = LocalWt.current
     val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
-    TextButton(
-        onClick = onClick,
-        interactionSource = interaction,
-        shape = RoundedCornerShape(20.dp),
-        contentPadding = PaddingValues(horizontal = Space.lg, vertical = Space.sm),
-        modifier = Modifier.border(
-            width = if (focused || selected) 2.dp else 1.dp,
-            color = if (focused || selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-            shape = RoundedCornerShape(20.dp),
-        ),
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .clickable(interactionSource = interaction, indication = null, onClick = onToggle),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Icon(
+            imageVector = if (favorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+            contentDescription = stringResource(if (favorite) R.string.favorite_remove else R.string.favorite_add),
+            tint = if (favorite) palette.fav else palette.muted,
+            modifier = Modifier.size(22.dp),
+        )
     }
 }
 
-private fun ContentKind.icon(): ImageVector = when (this) {
-    ContentKind.TV -> Icons.Filled.LiveTv
-    ContentKind.RADIO -> Icons.Filled.Radio
-    ContentKind.WEBCAM -> Icons.Filled.Videocam
+@Composable
+fun IconTile(
+    icon: ImageVector,
+    description: String,
+    onClick: () -> Unit,
+    tint: Color? = null,
+) {
+    val palette = LocalWt.current
+    val shape = RoundedCornerShape(15.dp)
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .wtShadow(shape, dark = palette.dark)
+            .clip(shape)
+            .background(palette.surface)
+            .border(if (focused) 3.dp else 0.dp, palette.accent, shape)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = description, tint = tint ?: palette.heading, modifier = Modifier.size(22.dp))
+    }
 }
 
-private fun initials(name: String): String {
-    val parts = name.split(" ").filter { it.isNotBlank() }
-    val letters = if (parts.size >= 2) "${parts[0].first()}${parts[1].first()}" else name.take(2)
-    return letters.uppercase()
+@Composable
+fun EmptyBlock(icon: ImageVector, message: String) {
+    val palette = LocalWt.current
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp, horizontal = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(icon, contentDescription = null, tint = palette.muted, modifier = Modifier.size(40.dp))
+        Spacer(Modifier.height(10.dp))
+        Text(message, color = palette.muted, fontSize = 14.sp, fontFamily = Outfit, textAlign = TextAlign.Center)
+    }
 }
 
-private fun artworkColors(name: String): List<Color> {
-    val palettes = listOf(
-        listOf(Color(0xFF12343C), Color(0xFF147A8A)),
-        listOf(Color(0xFF2A1E3F), Color(0xFF6C4BD6)),
-        listOf(Color(0xFF3A2412), Color(0xFFC47A2C)),
-        listOf(Color(0xFF132033), Color(0xFF2F6FED)),
-        listOf(Color(0xFF2C1420), Color(0xFFB43B5C)),
-        listOf(Color(0xFF10281C), Color(0xFF1E8A5A)),
+@Composable
+fun StatusBanner(text: String, modifier: Modifier = Modifier) {
+    val palette = LocalWt.current
+    Text(
+        text,
+        color = palette.warnText,
+        fontSize = 14.sp,
+        fontFamily = Outfit,
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(palette.warnBg)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
     )
-    val hash = name.fold(0) { acc, char -> acc * 31 + char.code }
-    return palettes[abs(hash) % palettes.size]
 }
 
-fun flagFor(code: String): String = CountryFlags.emoji(code)
+@Composable
+fun WtSwitch(checked: Boolean, label: String, onChecked: (Boolean) -> Unit) {
+    val palette = LocalWt.current
+    val knob by animateDpAsState(if (checked) 23.dp else 3.dp, tween(200), label = "knob")
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    Box(
+        modifier = Modifier
+            .size(width = 50.dp, height = 30.dp)
+            .border(if (focused) 3.dp else 0.dp, palette.accent, CircleShape)
+            .clip(CircleShape)
+            .background(if (checked) palette.accent else palette.line)
+            .clickable(interactionSource = interaction, indication = null) { onChecked(!checked) },
+    ) {
+        Box(
+            Modifier
+                .offset(x = knob, y = 3.dp)
+                .size(24.dp)
+                .shadow(2.dp, CircleShape)
+                .background(Color.White, CircleShape),
+        )
+    }
+}
+
+@Composable
+fun WorldBottomBar(
+    explore: Boolean,
+    favorites: Boolean,
+    settings: Boolean,
+    onExplore: () -> Unit,
+    onFavorites: () -> Unit,
+    onSettings: () -> Unit,
+) {
+    val palette = LocalWt.current
+    val shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(8.dp, shape, ambientColor = if (palette.dark) Color(0x66000000) else Color(0x14465AA0), spotColor = if (palette.dark) Color(0x66000000) else Color(0x14465AA0))
+            .background(palette.surface, shape)
+            .navigationBarsPadding()
+            .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 10.dp),
+    ) {
+        NavItem(stringResource(R.string.nav_discover), Icons.Outlined.Explore, explore, onExplore, Modifier.weight(1f))
+        NavItem(stringResource(R.string.nav_favorites), Icons.Outlined.FavoriteBorder, favorites, onFavorites, Modifier.weight(1f))
+        NavItem(stringResource(R.string.nav_settings), Icons.Outlined.Tune, settings, onSettings, Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun NavItem(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val palette = LocalWt.current
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    Column(
+        modifier = modifier
+            .border(if (focused) 3.dp else 0.dp, palette.accent, RoundedCornerShape(16.dp))
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = 52.dp, height = 30.dp)
+                .clip(RoundedCornerShape(15.dp))
+                .background(if (selected) palette.soft else Color.Transparent),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = if (selected) palette.accent else palette.muted, modifier = Modifier.size(22.dp))
+        }
+        Text(
+            label,
+            color = if (selected) palette.accent else palette.muted,
+            fontFamily = Outfit,
+            fontWeight = FontWeight.Medium,
+            fontSize = 12.sp,
+        )
+    }
+}
