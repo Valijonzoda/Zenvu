@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -23,7 +24,10 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -70,8 +74,9 @@ fun HomePane(
 ) {
     val palette = LocalWt.current
     val query = state.countryQuery.trim()
-    val countries = state.countries.filter { country ->
-        query.isEmpty() || country.name.contains(query, ignoreCase = true)
+    val countries = remember(state.countries, query) {
+        if (query.isEmpty()) state.countries
+        else state.countries.filter { it.name.contains(query, ignoreCase = true) }
     }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -131,52 +136,75 @@ fun CountryChannelsPane(
     onRefresh: () -> Unit,
     onOpen: (List<MediaEntry>, MediaEntry) -> Unit,
     onToggleFavorite: (MediaEntry) -> Unit,
+    playingKey: String?,
+    fullscreen: Boolean,
+    player: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalWt.current
     val country = state.countries.firstOrNull { it.code in state.selectedCodes }
     val channels = state.channels
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconTile(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), onBack)
-                Spacer(Modifier.padding(start = 12.dp))
-                if (country != null) {
-                    FlagBadge(country.code, width = 48.dp, height = 34.dp)
-                    Spacer(Modifier.padding(start = 12.dp))
-                    Column {
-                        Text(country.name, color = palette.heading, fontFamily = Outfit, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
-                        val count = if (state.loadingChannels) country.channelCount else channels.size
-                        Text(
-                            "${kindCount(state.kind, count)} · ${country.capital}",
-                            color = palette.muted,
-                            fontSize = 14.sp,
-                            fontFamily = Outfit,
+    val listState = rememberLazyListState()
+    androidx.compose.runtime.LaunchedEffect(playingKey, channels) {
+        val index = channels.indexOfFirst { it.key == playingKey }
+        if (index >= 0) listState.animateScrollToItem(index)
+    }
+    Column(modifier.fillMaxSize().background(palette.bg)) {
+        if (playingKey != null) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .then(if (fullscreen) Modifier.weight(1f) else Modifier.aspectRatio(16f / 10f)),
+            ) {
+                player()
+            }
+        }
+        if (!fullscreen) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = if (playingKey == null) 20.dp else 12.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                        IconTile(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), onBack)
+                        Spacer(Modifier.padding(start = 12.dp))
+                        if (country != null) {
+                            FlagBadge(country.code, width = 48.dp, height = 34.dp)
+                            Spacer(Modifier.padding(start = 12.dp))
+                            Column {
+                                Text(country.name, color = palette.heading, fontFamily = Outfit, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+                                val count = if (state.loadingChannels) country.channelCount else channels.size
+                                Text(
+                                    "${kindCount(state.kind, count)} · ${country.capital}",
+                                    color = palette.muted,
+                                    fontSize = 14.sp,
+                                    fontFamily = Outfit,
+                                )
+                            }
+                        }
+                    }
+                }
+                when {
+                    state.loadingChannels && channels.isEmpty() -> item { LoadingRows(card = true) }
+                    state.channelsError != null && channels.isEmpty() -> item {
+                        EmptyBlock(Icons.Outlined.Search, state.channelsError)
+                        TextButton(onClick = onRefresh) { Text(stringResource(R.string.retry)) }
+                    }
+                    channels.isEmpty() -> item {
+                        EmptyBlock(Icons.Outlined.Search, stringResource(R.string.empty_country))
+                    }
+                    else -> items(channels, key = { it.key }, contentType = { "channel" }) { entry ->
+                        ChannelCard(
+                            entry = entry,
+                            favorite = entry.key in state.favoriteKeys,
+                            playing = entry.key == playingKey,
+                            onOpen = { onOpen(channels, entry) },
+                            onToggleFavorite = { onToggleFavorite(entry) },
                         )
                     }
                 }
-            }
-        }
-        when {
-            state.loadingChannels && channels.isEmpty() -> item { LoadingRows(card = true) }
-            state.channelsError != null && channels.isEmpty() -> item {
-                EmptyBlock(Icons.Outlined.Search, state.channelsError)
-                TextButton(onClick = onRefresh) { Text(stringResource(R.string.retry)) }
-            }
-            channels.isEmpty() -> item {
-                EmptyBlock(Icons.Outlined.Search, stringResource(R.string.empty_country))
-            }
-            else -> items(channels, key = { it.key }) { entry ->
-                ChannelCard(
-                    entry = entry,
-                    favorite = entry.key in state.favoriteKeys,
-                    onOpen = { onOpen(channels, entry) },
-                    onToggleFavorite = { onToggleFavorite(entry) },
-                )
             }
         }
     }
@@ -203,13 +231,12 @@ fun FavoritesPane(
         if (state.favorites.isEmpty()) {
             item { EmptyBlock(Icons.Outlined.FavoriteBorder, stringResource(R.string.empty_favorites_title) + "\n" + stringResource(R.string.empty_favorites_body)) }
         } else {
-            items(state.favorites, key = { it.key }) { entry ->
-                val sameKind = state.favorites.filter { it.kind == entry.kind }
+            items(state.favorites, key = { it.key }, contentType = { "favorite" }) { entry ->
                 ChannelCard(
                     entry = entry,
                     favorite = true,
                     favoriteTags = true,
-                    onOpen = { onOpen(sameKind, entry) },
+                    onOpen = { onOpen(state.favorites.filter { it.kind == entry.kind }, entry) },
                     onToggleFavorite = { onToggleFavorite(entry) },
                 )
             }

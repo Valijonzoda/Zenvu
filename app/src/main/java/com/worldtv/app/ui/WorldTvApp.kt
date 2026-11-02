@@ -1,5 +1,11 @@
 package com.worldtv.app.ui
 
+import android.Manifest
+import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.os.Build
+import android.view.OrientationEventListener
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -34,16 +40,25 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.worldtv.app.AppContainer
@@ -54,6 +69,7 @@ import com.worldtv.app.domain.ThemeChoice
 import com.worldtv.app.domain.UserSettings
 import com.worldtv.app.ui.catalog.CatalogViewModel
 import com.worldtv.app.ui.components.WorldBottomBar
+import com.worldtv.app.ui.player.PlaybackStage
 import com.worldtv.app.ui.player.PlayerScreen
 import com.worldtv.app.ui.screens.CountryChannelsPane
 import com.worldtv.app.ui.screens.FavoritesPane
@@ -78,15 +94,93 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
         lifecycle = lifecycle,
     )
     val radio by container.radio.state.collectAsStateWithLifecycle()
+    val queue by container.queue.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val activity = LocalContext.current as? android.app.Activity
+    val context = LocalContext.current
+    val activity = context as? android.app.Activity
     val cacheCleared = stringResource(R.string.cache_cleared)
+    val orientation = LocalConfiguration.current.orientation
+    var deviceLandscape by remember { mutableStateOf(orientation == Configuration.ORIENTATION_LANDSCAPE) }
+    var preferPortrait by remember { mutableStateOf(false) }
+    var forceLandscape by remember { mutableStateOf(false) }
+    var tvFullscreen by remember { mutableStateOf(false) }
+    val screen = navigator.current
+    val currentEntry = queue.current
+    val playingHere = screen == AppScreen.Countries &&
+        currentEntry != null &&
+        catalog.channels.any { it.key == currentEntry.key }
+    val playerOpen = playingHere || (screen == AppScreen.Player && currentEntry != null)
+    val fullscreen = when {
+        television -> tvFullscreen && playerOpen
+        !playerOpen || preferPortrait -> false
+        else -> deviceLandscape || forceLandscape
+    }
+
+    DisposableEffect(context) {
+        val listener = object : OrientationEventListener(context) {
+            override fun onOrientationChanged(angle: Int) {
+                if (angle == ORIENTATION_UNKNOWN) return
+                deviceLandscape = angle in 45..134 || angle in 225..314
+            }
+        }
+        if (listener.canDetectOrientation()) listener.enable()
+        onDispose { listener.disable() }
+    }
+    LaunchedEffect(deviceLandscape) {
+        if (!deviceLandscape) preferPortrait = false
+        if (deviceLandscape) forceLandscape = false
+    }
+    DisposableEffect(playerOpen, preferPortrait, forceLandscape, television, fullscreen) {
+        val host = activity
+        if (host != null && !television) {
+            host.requestedOrientation = when {
+                !playerOpen || preferPortrait -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                forceLandscape -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                else -> ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
+            }
+            val bars = WindowCompat.getInsetsController(host.window, host.window.decorView)
+            if (fullscreen) {
+                bars.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                bars.hide(WindowInsetsCompat.Type.systemBars())
+            } else {
+                bars.show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+        onDispose {
+            if (host != null && !television) {
+                WindowCompat.getInsetsController(host.window, host.window.decorView)
+                    .show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
+
+    fun stopRadioIfNeeded() {
+        val entry = container.queue.state.value.current
+        val notifications = notificationsGranted(context)
+        if (entry?.kind == ContentKind.RADIO && (!settings.backgroundRadio || !notifications)) {
+            container.radio.stop()
+        }
+    }
 
     fun closePlayer() {
-        val entry = container.queue.state.value.current
-        if (entry?.kind == ContentKind.RADIO && !settings.backgroundRadio) container.radio.stop()
+        stopRadioIfNeeded()
+        tvFullscreen = false
         navigator.back()
+    }
+
+    fun toggleOrientation() {
+        if (television) {
+            tvFullscreen = !tvFullscreen
+            return
+        }
+        if (fullscreen) {
+            preferPortrait = true
+            forceLandscape = false
+        } else {
+            preferPortrait = false
+            forceLandscape = true
+        }
     }
 
     fun openEntry(entries: List<MediaEntry>, entry: MediaEntry) {
@@ -96,9 +190,26 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
         navigator.openPlayer()
     }
 
+    fun playInList(entries: List<MediaEntry>, entry: MediaEntry) {
+        val index = entries.indexOfFirst { it.key == entry.key }.coerceAtLeast(0)
+        container.queue.open(entries, index)
+        if (entry.kind != ContentKind.RADIO) container.radio.pause()
+    }
+
     BackHandler {
-        if (navigator.current == AppScreen.Player) closePlayer()
-        else if (!navigator.back()) activity?.finish()
+        when {
+            fullscreen && !television -> {
+                preferPortrait = true
+                forceLandscape = false
+            }
+            television && tvFullscreen -> tvFullscreen = false
+            navigator.current == AppScreen.Player -> closePlayer()
+            navigator.current == AppScreen.Countries && playingHere -> {
+                stopRadioIfNeeded()
+                navigator.back()
+            }
+            !navigator.back() -> activity?.finish()
+        }
     }
 
     WorldTvTheme(choice = settings.theme, television = television, kind = catalog.kind) {
@@ -122,7 +233,11 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
                     }
                 },
                 onOpen = ::openEntry,
+                onPlayInList = ::playInList,
                 onClosePlayer = ::closePlayer,
+                fullscreen = fullscreen,
+                onToggleOrientation = ::toggleOrientation,
+                onLeaveCountry = ::stopRadioIfNeeded,
             )
         } else {
             PhoneShell(
@@ -146,6 +261,10 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
                 },
                 onOpen = ::openEntry,
                 onClosePlayer = ::closePlayer,
+                onPlayInList = ::playInList,
+                fullscreen = fullscreen,
+                onToggleOrientation = ::toggleOrientation,
+                onLeaveCountry = ::stopRadioIfNeeded,
                 onRadioToggle = container.radio::toggle,
                 onRadioStop = container.radio::stop,
             )
@@ -170,11 +289,15 @@ private fun PhoneShell(
     onClearCache: () -> Unit,
     onOpen: (List<MediaEntry>, MediaEntry) -> Unit,
     onClosePlayer: () -> Unit,
+    onPlayInList: (List<MediaEntry>, MediaEntry) -> Unit,
+    fullscreen: Boolean,
+    onToggleOrientation: () -> Unit,
+    onLeaveCountry: () -> Unit,
     onRadioToggle: () -> Unit,
     onRadioStop: () -> Unit,
 ) {
     val screen = navigator.current
-    val showBar = screen != AppScreen.Player
+    val showBar = !fullscreen && screen != AppScreen.Player
     Scaffold(
         containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
@@ -192,10 +315,11 @@ private fun PhoneShell(
             }
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        Box(Modifier.fillMaxSize().then(if (fullscreen) Modifier else Modifier.padding(padding))) {
             ScreenBody(
                 screen = screen,
                 television = false,
+                fullscreen = fullscreen,
                 catalog = catalog,
                 catalogModel = catalogModel,
                 settings = settings,
@@ -205,8 +329,13 @@ private fun PhoneShell(
                 onBackground = onBackground,
                 onClearCache = onClearCache,
                 onOpen = onOpen,
+                onPlayInList = onPlayInList,
                 onClosePlayer = onClosePlayer,
-                onBack = navigator::back,
+                onToggleOrientation = onToggleOrientation,
+                onBack = {
+                    onLeaveCountry()
+                    navigator.back()
+                },
                 onCountries = navigator::openCountries,
                 onPrivacy = navigator::openPrivacy,
             )
@@ -227,7 +356,11 @@ private fun TelevisionShell(
     onBackground: (Boolean) -> Unit,
     onClearCache: () -> Unit,
     onOpen: (List<MediaEntry>, MediaEntry) -> Unit,
+    onPlayInList: (List<MediaEntry>, MediaEntry) -> Unit,
     onClosePlayer: () -> Unit,
+    fullscreen: Boolean,
+    onToggleOrientation: () -> Unit,
+    onLeaveCountry: () -> Unit,
 ) {
     val screen = navigator.current
     Row(Modifier.fillMaxSize()) {
@@ -246,6 +379,7 @@ private fun TelevisionShell(
             ScreenBody(
                 screen = screen,
                 television = true,
+                fullscreen = fullscreen,
                 catalog = catalog,
                 catalogModel = catalogModel,
                 settings = settings,
@@ -255,8 +389,13 @@ private fun TelevisionShell(
                 onBackground = onBackground,
                 onClearCache = onClearCache,
                 onOpen = onOpen,
+                onPlayInList = onPlayInList,
                 onClosePlayer = onClosePlayer,
-                onBack = navigator::back,
+                onToggleOrientation = onToggleOrientation,
+                onBack = {
+                    onLeaveCountry()
+                    navigator.back()
+                },
                 onCountries = navigator::openCountries,
                 onPrivacy = navigator::openPrivacy,
             )
@@ -269,6 +408,7 @@ private fun TelevisionShell(
 private fun ScreenBody(
     screen: AppScreen,
     television: Boolean,
+    fullscreen: Boolean,
     catalog: com.worldtv.app.ui.catalog.CatalogUiState,
     catalogModel: CatalogViewModel,
     settings: com.worldtv.app.domain.UserSettings,
@@ -278,12 +418,15 @@ private fun ScreenBody(
     onBackground: (Boolean) -> Unit,
     onClearCache: () -> Unit,
     onOpen: (List<MediaEntry>, MediaEntry) -> Unit,
+    onPlayInList: (List<MediaEntry>, MediaEntry) -> Unit,
     onClosePlayer: () -> Unit,
+    onToggleOrientation: () -> Unit,
     onBack: () -> Unit,
     onCountries: () -> Unit,
     onPrivacy: () -> Unit,
 ) {
     val queue by container.queue.state.collectAsStateWithLifecycle()
+    val playing = queue.current?.takeIf { entry -> catalog.channels.any { it.key == entry.key } }
     when (screen) {
         AppScreen.Catalog -> HomePane(
             state = catalog,
@@ -299,8 +442,27 @@ private fun ScreenBody(
             state = catalog,
             onBack = onBack,
             onRefresh = catalogModel::refresh,
-            onOpen = onOpen,
+            onOpen = onPlayInList,
             onToggleFavorite = catalogModel::toggleFavorite,
+            playingKey = playing?.key,
+            fullscreen = fullscreen && playing != null,
+            player = {
+                val entry = playing
+                if (entry != null) {
+                    PlaybackStage(
+                        container = container,
+                        entry = entry,
+                        countryName = catalog.countryName(entry.countryCode),
+                        favorite = entry.key in catalog.favoriteKeys,
+                        autoFallback = settings.autoFallbackStreams,
+                        fullscreen = fullscreen,
+                        onToggleFavorite = { catalogModel.toggleFavorite(entry) },
+                        onBack = onToggleOrientation,
+                        onToggleOrientation = onToggleOrientation,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            },
         )
         AppScreen.Favorites -> FavoritesPane(
             state = catalog,
@@ -325,8 +487,13 @@ private fun ScreenBody(
             favorite = queue.current?.key in catalog.favoriteKeys,
             countryName = queue.current?.let { catalog.countryName(it.countryCode) }.orEmpty(),
             autoFallback = settings.autoFallbackStreams,
+            fullscreen = fullscreen,
             onToggleFavorite = catalogModel::toggleFavorite,
-            onBack = onClosePlayer,
+            onBack = if (fullscreen && !television) onToggleOrientation else onClosePlayer,
+            onToggleOrientation = onToggleOrientation,
+            channels = queue.entries,
+            favoriteKeys = catalog.favoriteKeys,
+            onSelect = { entry -> container.queue.select(entry.key) },
         )
     }
 }
@@ -402,4 +569,10 @@ private fun RailButton(
         }
         Text(label, style = MaterialTheme.typography.titleMedium)
     }
+}
+
+private fun notificationsGranted(context: android.content.Context): Boolean {
+    if (Build.VERSION.SDK_INT < 33) return true
+    return ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+        PackageManager.PERMISSION_GRANTED
 }

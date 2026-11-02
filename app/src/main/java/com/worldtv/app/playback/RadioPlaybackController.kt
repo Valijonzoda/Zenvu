@@ -9,6 +9,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.worldtv.app.domain.MediaEntry
@@ -42,6 +43,7 @@ class RadioPlaybackController(
     val state: StateFlow<RadioPlaybackState> = stateFlow.asStateFlow()
 
     private var controller: MediaController? = null
+    private var localPlayer: ExoPlayer? = null
     private var urls: List<String> = emptyList()
     private var urlIndex: Int = 0
     private var autoFallback: Boolean = true
@@ -67,32 +69,33 @@ class RadioPlaybackController(
         }
         scope.launch {
             try {
+                releaseLocal()
                 val mediaController = connect()
                 urls = direct
                 urlIndex = 0
                 stateFlow.value = RadioPlaybackState(entry = entry, buffering = true)
                 start(mediaController, entry)
-            } catch (error: SecurityException) {
-                stateFlow.value = RadioPlaybackState(
-                    entry = entry,
-                    error = "Allow notifications so radio can keep a playback control on screen.",
-                )
             } catch (error: Exception) {
-                stateFlow.value = RadioPlaybackState(
-                    entry = entry,
-                    error = PlaybackPlanner.failureMessage(entry),
-                )
+                if (shouldPlayLocally(error)) {
+                    playLocal(entry, direct)
+                } else {
+                    stateFlow.value = RadioPlaybackState(
+                        entry = entry,
+                        error = PlaybackPlanner.failureMessage(entry),
+                    )
+                }
             }
         }
     }
 
     fun toggle() {
-        val mediaController = controller ?: return
-        if (mediaController.isPlaying) mediaController.pause() else mediaController.play()
+        val player = controller ?: localPlayer ?: return
+        if (player.isPlaying) player.pause() else player.play()
     }
 
     fun pause() {
         controller?.pause()
+        localPlayer?.pause()
     }
 
     fun stop() {
@@ -101,6 +104,7 @@ class RadioPlaybackController(
             mediaController.stop()
             mediaController.clearMediaItems()
         }
+        releaseLocal()
         urls = emptyList()
         urlIndex = 0
         stateFlow.value = RadioPlaybackState()
@@ -152,7 +156,7 @@ class RadioPlaybackController(
         return connected
     }
 
-    private fun start(mediaController: MediaController, entry: MediaEntry) {
+    private fun start(mediaController: Player, entry: MediaEntry) {
         val url = urls.getOrNull(urlIndex) ?: return
         val metadata = MediaMetadata.Builder()
             .setTitle(entry.name)
@@ -170,15 +174,59 @@ class RadioPlaybackController(
         publish()
     }
 
+    private fun playLocal(entry: MediaEntry, direct: List<String>) {
+        urls = direct
+        urlIndex = 0
+        val player = localPlayer ?: buildPlayer(appContext, audioOnly = true).also { created ->
+            localPlayer = created
+            created.addListener(object : Player.Listener {
+                override fun onIsPlayingChanged(isPlaying: Boolean) = publish()
+
+                override fun onPlaybackStateChanged(playbackState: Int) = publish()
+
+                override fun onPlayerError(error: PlaybackException) {
+                    val current = stateFlow.value.entry
+                    if (autoFallback && urlIndex + 1 < urls.size && current != null) {
+                        urlIndex += 1
+                        start(created, current)
+                    } else {
+                        stateFlow.value = stateFlow.value.copy(
+                            playing = false,
+                            buffering = false,
+                            error = PlaybackPlanner.failureMessage(current),
+                        )
+                    }
+                }
+            })
+        }
+        stateFlow.value = RadioPlaybackState(entry = entry, buffering = true)
+        start(player, entry)
+    }
+
+    private fun releaseLocal() {
+        localPlayer?.release()
+        localPlayer = null
+    }
+
     private fun publish() {
-        val mediaController = controller ?: return
+        val player = controller ?: localPlayer ?: return
         val entry = stateFlow.value.entry
         stateFlow.value = RadioPlaybackState(
             entry = entry,
-            playing = mediaController.isPlaying,
-            buffering = mediaController.playbackState == Player.STATE_BUFFERING ||
-                (mediaController.playbackState == Player.STATE_IDLE && mediaController.playWhenReady),
+            playing = player.isPlaying,
+            buffering = player.playbackState == Player.STATE_BUFFERING ||
+                (player.playbackState == Player.STATE_IDLE && player.playWhenReady),
             error = null,
         )
     }
+}
+
+private fun shouldPlayLocally(error: Throwable): Boolean {
+    var current: Throwable? = error
+    while (current != null) {
+        if (current is SecurityException) return true
+        if (current.javaClass.name.endsWith("ForegroundServiceStartNotAllowedException")) return true
+        current = current.cause
+    }
+    return false
 }

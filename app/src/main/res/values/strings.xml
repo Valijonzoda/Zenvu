@@ -59,7 +59,9 @@
     <string name="unsupported_title">This source cannot be played here</string>
     <string name="player_error_title">Playback did not start</string>
     <string name="try_embed">Try embedded source</string>
-    <string name="radio_notification_denied">Allow notifications so radio can keep a playback control on screen.</string>
+    <string name="radio_notification_denied">You can listen here. Without notifications you cannot control playback from the shade, and it will not keep playing in the background.</string>
+    <string name="now_playing">Playing</string>
+    <string name="watch_landscape">Watch horizontally</string>
     <string name="dataset_credit">Listings come from the public Famelack dataset. World TV does not host the streams and does not claim they are officially licensed.</string>
     <string name="geo_note">This stream may be blocked in your region. We will still try to play it.</string>
     <string name="home_subtitle">Live TV, radio and webcams from every country</string>

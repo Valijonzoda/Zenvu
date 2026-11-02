@@ -292,51 +292,41 @@ fun ChannelCard(
     onOpen: () -> Unit,
     onToggleFavorite: () -> Unit,
     favoriteTags: Boolean = false,
+    playing: Boolean = false,
 ) {
     val palette = LocalWt.current
-    val shape = RoundedCornerShape(22.dp)
+    val shape = RoundedCornerShape(20.dp)
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val index = artIndex(entry.key)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .wtShadow(shape, elevation = 2.dp, dark = palette.dark)
+            .pressScale(interaction)
             .clip(shape)
-            .background(palette.surface)
-            .border(if (focused) 3.dp else 0.dp, palette.accent, shape)
-            .padding(10.dp),
+            .background(if (playing) palette.soft else palette.surface)
+            .border(if (focused || playing) 2.dp else 0.dp, if (playing || focused) palette.accent else Color.Transparent, shape)
+            .clickable(interactionSource = interaction, indication = null, onClick = onOpen)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier
-                .weight(1f)
-                .pressScale(interaction)
-                .clickable(interactionSource = interaction, indication = null, onClick = onOpen),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ChannelArt(index, Modifier.size(76.dp))
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    entry.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = palette.heading,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(6.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                entry.name,
+                style = MaterialTheme.typography.titleMedium,
+                color = palette.heading,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (playing) MetaTag(stringResource(R.string.now_playing), TagKind.Live)
+                else if (entry.kind == ContentKind.TV && !favoriteTags) MetaTag(stringResource(R.string.tag_live), TagKind.Live)
                 if (favoriteTags) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        MetaTag(entry.kind.title, TagKind.Plain)
-                        MetaTag(entry.countryCode.uppercase(), TagKind.Plain)
-                    }
+                    MetaTag(entry.kind.title, TagKind.Plain)
+                    MetaTag(entry.countryCode.uppercase(), TagKind.Plain)
                 } else {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        entry.languages.firstOrNull()?.let { MetaTag(it.lowercase(), TagKind.Plain) }
-                        if (entry.geoBlocked) MetaTag(stringResource(R.string.region_locked), TagKind.Region)
-                        if (entry.kind == ContentKind.TV) MetaTag(stringResource(R.string.tag_live), TagKind.Live)
-                    }
+                    entry.languages.firstOrNull()?.let { MetaTag(it.lowercase(), TagKind.Plain) }
+                    if (entry.geoBlocked) MetaTag(stringResource(R.string.region_locked), TagKind.Region)
                 }
             }
         }
