@@ -104,10 +104,10 @@ Outfit is included under the SIL Open Font License. See `third_party/outfit/OFL.
 
 ## Screenshots
 
-![TV Channels](03-tv-channels.png)
-![TV Player](04-tv-player.png)
-![Radio Player](05-radio-player.png)
-![Webcams](06-webcams.png)
-![Webcam Player](07-webcam-player.png)
-![Favorites](08-favorites.png)
-![Settings](09-settings.png)
+![TV Channels](media/03-tv-channels.png)
+![TV Player](media/04-tv-player.png)
+![Radio Player](media/05-radio-player.png)
+![Webcams](media/06-webcams.png)
+![Webcam Player](media/07-webcam-player.png)
+![Favorites](media/08-favorites.png)
+![Settings](media/09-settings.png)
