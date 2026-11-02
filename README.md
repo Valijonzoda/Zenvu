@@ -102,12 +102,19 @@ The dataset license allows reuse of the listing data. That license does not make
 
 Outfit is included under the SIL Open Font License. See `third_party/outfit/OFL.txt`.
 
+
 ## Screenshots
 
-<img src="media/03-tv-channels.png" width="300">
-<img src="media/04-tv-player.png" width="300">
-<img src="media/05-radio-player.png" width="300">
-<img src="media/06-webcams.png" width="300">
-<img src="media/07-webcam-player.png" width="300">
-<img src="media/08-favorites.png" width="300">
-<img src="media/09-settings.png" width="300">
+<table>
+<tr>
+<td><img src="media/03-tv-channels.png" width="200"></td>
+<td><img src="media/04-tv-player.png" width="200"></td>
+<td><img src="media/05-radio-player.png" width="200"></td>
+<td><img src="media/06-webcams.png" width="200"></td>
+</tr>
+<tr>
+<td><img src="media/07-webcam-player.png" width="200"></td>
+<td><img src="media/08-favorites.png" width="200"></td>
+<td><img src="media/09-settings.png" width="200"></td>
+</tr>
+</table>
