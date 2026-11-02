@@ -42,8 +42,10 @@ jobs:
           unzip -q /tmp/cmdtools.zip -d /tmp
           rm -rf "$SDK/cmdline-tools/latest"
           mv /tmp/cmdline-tools "$SDK/cmdline-tools/latest"
+          set +o pipefail
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
-          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platforms;android-37.2" "build-tools;37.0.0" "platform-tools"
+          set -o pipefail
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" "platforms;android-37.2" "build-tools;37.0.0" "platform-tools"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
 
