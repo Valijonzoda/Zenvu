@@ -16,6 +16,7 @@ import com.worldtv.app.domain.PlaybackPlan
 import com.worldtv.app.domain.PlaybackPlanner
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -77,6 +78,8 @@ class PlaybackPlannerTest {
         val embed = plan as PlaybackPlan.Embed
         assertTrue(embed.url.startsWith("https://www.youtube-nocookie.com/embed/TmVRslhKB4c"))
         assertTrue(embed.url.contains("autoplay=1"))
+        assertFalse(embed.url.contains("fs=0"))
+        assertFalse(embed.url.contains("origin="))
     }
 
     @Test

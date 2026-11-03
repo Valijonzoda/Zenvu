@@ -1,5 +1,6 @@
 package com.worldtv.app.data
 
+import com.worldtv.app.domain.UserNotice
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -27,7 +28,7 @@ class OkHttpDatasetClient(
                 if (attempt == 0) Thread.sleep(400)
             }
         }
-        throw DatasetException(ioMessage(lastIo), lastIo)
+        throw DatasetException(ioMessage(lastIo), lastIo, ioNotice(lastIo))
     }
 
     private fun execute(relativePath: String): String {
@@ -39,10 +40,11 @@ class OkHttpDatasetClient(
         http.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw DatasetException(httpMessage(response.code))
+                val (message, notice) = httpFailure(response.code)
+                throw DatasetException(message, notice = notice, noticeArg = response.code.toString())
             }
             if (body.isBlank()) {
-                throw DatasetException("The dataset file was empty.")
+                throw DatasetException("The dataset file was empty.", notice = UserNotice.DATASET_EMPTY)
             }
             return body
         }
@@ -63,11 +65,19 @@ class OkHttpDatasetClient(
             else -> "The download was interrupted. Check your connection and try again."
         }
 
-        fun httpMessage(code: Int): String = when (code) {
-            404 -> "That listing file is not in the dataset right now."
-            403, 429 -> "The dataset host refused the request (HTTP $code). Try again shortly."
-            in 500..599 -> "The dataset host had a problem (HTTP $code)."
-            else -> "The dataset request failed (HTTP $code)."
+        fun ioNotice(error: IOException?): UserNotice = when (error) {
+            is UnknownHostException -> UserNotice.NO_INTERNET
+            is SocketTimeoutException -> UserNotice.TIMEOUT
+            else -> UserNotice.DOWNLOAD_INTERRUPTED
+        }
+
+        fun httpMessage(code: Int): String = httpFailure(code).first
+
+        fun httpFailure(code: Int): Pair<String, UserNotice> = when (code) {
+            404 -> "That listing file is not in the dataset right now." to UserNotice.LISTING_MISSING
+            403, 429 -> "The dataset host refused the request (HTTP $code). Try again shortly." to UserNotice.HOST_REFUSED
+            in 500..599 -> "The dataset host had a problem (HTTP $code)." to UserNotice.HOST_PROBLEM
+            else -> "The dataset request failed (HTTP $code)." to UserNotice.REQUEST_FAILED
         }
     }
 }

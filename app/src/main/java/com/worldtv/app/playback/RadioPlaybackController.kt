@@ -32,6 +32,7 @@ data class RadioPlaybackState(
     val playing: Boolean = false,
     val buffering: Boolean = false,
     val error: String? = null,
+    val noDirectAudio: Boolean = false,
 )
 
 class RadioPlaybackController(
@@ -64,6 +65,7 @@ class RadioPlaybackController(
                 entry = entry,
                 error = (plan as? PlaybackPlan.Unsupported)?.reason
                     ?: "This station has no direct audio stream.",
+                noDirectAudio = plan !is PlaybackPlan.Unsupported,
             )
             return
         }
@@ -221,6 +223,7 @@ class RadioPlaybackController(
                     (player.playbackState == Player.STATE_IDLE && player.playWhenReady)
                 ),
             error = if (playingNow) null else previous.error,
+            noDirectAudio = !playingNow && previous.noDirectAudio,
         )
     }
 }

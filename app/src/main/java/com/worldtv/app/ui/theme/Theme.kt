@@ -13,6 +13,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -24,6 +25,8 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import com.worldtv.app.R
+import com.worldtv.app.data.LocaleApplier
+import com.worldtv.app.domain.AppLanguages
 import com.worldtv.app.domain.ContentKind
 import com.worldtv.app.domain.ThemeChoice
 
@@ -119,6 +122,8 @@ val Outfit = FontFamily(
     outfit(FontWeight.Bold),
 )
 
+val LocalAppFont = staticCompositionLocalOf { Outfit }
+
 private fun type(television: Boolean): Typography {
     val scale = if (television) 1.12f else 1f
     fun size(value: Float) = (value * scale).sp
@@ -211,7 +216,12 @@ fun WorldTvTheme(
             controller.isAppearanceLightNavigationBars = !dark
         }
     }
-    CompositionLocalProvider(LocalWt provides colors) {
+    val appFont = if (AppLanguages.usesOutfit(LocaleApplier.read(LocalContext.current))) {
+        Outfit
+    } else {
+        FontFamily.Default
+    }
+    CompositionLocalProvider(LocalWt provides colors, LocalAppFont provides appFont) {
         MaterialTheme(
             colorScheme = scheme,
             typography = type(television),

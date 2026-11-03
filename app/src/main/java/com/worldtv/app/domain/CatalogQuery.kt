@@ -1,5 +1,7 @@
 package com.worldtv.app.domain
 
+import java.util.Locale
+
 object CatalogQuery {
     fun filter(
         entries: List<MediaEntry>,
@@ -43,7 +45,14 @@ object CountrySelection {
         val needle = query.trim()
         if (needle.isEmpty()) return true
         return country.name.contains(needle, ignoreCase = true) ||
+            displayName(country.code, country.name).contains(needle, ignoreCase = true) ||
             country.code.contains(needle, ignoreCase = true) ||
             country.capital.contains(needle, ignoreCase = true)
+    }
+
+    fun displayName(code: String, fallback: String): String {
+        val localized = Locale.Builder().setRegion(code.uppercase(Locale.ROOT)).build().getDisplayCountry(Locale.getDefault())
+        if (localized.isBlank() || localized.equals(code, ignoreCase = true)) return fallback
+        return localized
     }
 }

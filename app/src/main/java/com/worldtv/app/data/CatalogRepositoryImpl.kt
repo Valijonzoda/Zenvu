@@ -5,6 +5,7 @@ import com.worldtv.app.domain.CatalogResult
 import com.worldtv.app.domain.ContentKind
 import com.worldtv.app.domain.Country
 import com.worldtv.app.domain.MediaEntry
+import com.worldtv.app.domain.UserNotice
 
 class CatalogRepositoryImpl(
     private val client: DatasetClient,
@@ -25,7 +26,7 @@ class CatalogRepositoryImpl(
             return CatalogResult(emptyList(), fromCache = false, offline = !online(), errorMessage = null)
         }
         val merged = mutableListOf<MediaEntry>()
-        val errors = mutableListOf<String>()
+        val errors = mutableListOf<CatalogResult<List<MediaEntry>>>()
         var fromCache = false
         var offline = false
         for (code in countryCodes.map { it.lowercase() }.distinct()) {
@@ -38,15 +39,16 @@ class CatalogRepositoryImpl(
             if (value != null) {
                 merged += value
             } else if (result.errorMessage != null) {
-                errors += result.errorMessage
+                errors += result
             }
         }
-        val message = errors.distinct().joinToString(" ").ifBlank { null }
+        val message = errors.mapNotNull { it.errorMessage }.distinct().joinToString(" ").ifBlank { null }
+        val firstError = errors.firstOrNull()
         val deduped = merged.distinctBy { it.key }
         return if (deduped.isEmpty() && message != null) {
-            CatalogResult(null, fromCache, offline, message)
+            CatalogResult(null, fromCache, offline, message, firstError?.notice, firstError?.noticeArg)
         } else {
-            CatalogResult(deduped, fromCache, offline, message)
+            CatalogResult(deduped, fromCache, offline, message, firstError?.notice, firstError?.noticeArg)
         }
     }
 
@@ -68,11 +70,19 @@ class CatalogRepositoryImpl(
             cache.write(path, body)
             CatalogResult(parsed, fromCache = false, offline = false, errorMessage = null)
         } catch (error: Exception) {
+            val failure = error.friendly()
             val cached = readCached(path, offline = !online(), parse)
             if (cached.value != null) {
-                cached.copy(errorMessage = error.friendly())
+                cached.copy(errorMessage = failure.message, notice = failure.notice, noticeArg = failure.arg)
             } else {
-                CatalogResult(null, fromCache = false, offline = !online(), errorMessage = error.friendly())
+                CatalogResult(
+                    null,
+                    fromCache = false,
+                    offline = !online(),
+                    errorMessage = failure.message,
+                    notice = failure.notice,
+                    noticeArg = failure.arg,
+                )
             }
         }
     }
@@ -91,6 +101,7 @@ class CatalogRepositoryImpl(
             } else {
                 "No saved copy of this list is available."
             },
+            notice = if (offline) UserNotice.OFFLINE_UNSAVED else UserNotice.NO_SAVED_COPY,
         )
         return try {
             CatalogResult(parse(cached.body), fromCache = true, offline = offline, errorMessage = null)
@@ -100,12 +111,23 @@ class CatalogRepositoryImpl(
                 fromCache = true,
                 offline = offline,
                 errorMessage = "A saved listing could not be read. Clear saved listings in Settings and try again.",
+                notice = UserNotice.SAVED_UNREADABLE,
             )
         }
     }
 
-    private fun Exception.friendly(): String = when (this) {
-        is DatasetException -> message ?: "Couldn't load the dataset."
-        else -> message?.takeIf { it.isNotBlank() } ?: "Couldn't read the dataset."
+    private data class Failure(val message: String, val notice: UserNotice, val arg: String?)
+
+    private fun Exception.friendly(): Failure = when (this) {
+        is DatasetException -> Failure(
+            message ?: "Couldn't load the dataset.",
+            notice ?: UserNotice.DATASET_LOAD,
+            noticeArg,
+        )
+        else -> Failure(
+            message?.takeIf { it.isNotBlank() } ?: "Couldn't read the dataset.",
+            UserNotice.DATASET_READ,
+            null,
+        )
     }
 }

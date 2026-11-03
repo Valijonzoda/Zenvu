@@ -11,6 +11,7 @@ import com.worldtv.app.domain.FavoriteResult
 import com.worldtv.app.domain.FavoritesRepository
 import com.worldtv.app.domain.MediaEntry
 import com.worldtv.app.domain.SettingsRepository
+import com.worldtv.app.domain.UserNotice
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -29,9 +30,10 @@ data class CatalogUiState(
     val favoritesOnly: Boolean = false,
     val loadingCountries: Boolean = true,
     val loadingChannels: Boolean = false,
-    val countriesError: String? = null,
-    val channelsError: String? = null,
-    val notice: String? = null,
+    val countriesError: UserNotice? = null,
+    val channelsError: UserNotice? = null,
+    val notice: UserNotice? = null,
+    val noticeArg: String? = null,
     val offline: Boolean = false,
     val fromCache: Boolean = false,
     val favoriteKeys: Set<String> = emptySet(),
@@ -51,8 +53,10 @@ data class CatalogUiState(
     val visibleChannels: List<MediaEntry>
         get() = CatalogQuery.filter(channels, channelQuery, language, favoritesOnly, favoriteKeys)
 
-    fun countryName(code: String): String =
-        countries.firstOrNull { it.code.equals(code, ignoreCase = true) }?.name ?: code.uppercase()
+    fun countryName(code: String): String {
+        val fallback = countries.firstOrNull { it.code.equals(code, ignoreCase = true) }?.name ?: code.uppercase()
+        return CountrySelection.displayName(code, fallback)
+    }
 }
 
 class CatalogViewModel(
@@ -161,8 +165,9 @@ class CatalogViewModel(
             countries = countries,
             selectedCodes = selected,
             loadingCountries = false,
-            countriesError = if (countries.isEmpty()) countriesResult.errorMessage else null,
-            notice = if (countries.isNotEmpty()) countriesResult.errorMessage else null,
+            countriesError = if (countries.isEmpty()) countriesResult.notice else null,
+            notice = if (countries.isNotEmpty()) countriesResult.notice else null,
+            noticeArg = countriesResult.noticeArg,
             offline = countriesResult.offline,
             fromCache = countriesResult.fromCache,
         )
@@ -192,8 +197,9 @@ class CatalogViewModel(
             stateFlow.value = stateFlow.value.copy(
                 channels = channels,
                 loadingChannels = false,
-                channelsError = if (channels.isEmpty()) result.errorMessage else null,
-                notice = result.errorMessage ?: stateFlow.value.notice,
+                channelsError = if (channels.isEmpty()) result.notice else null,
+                notice = result.notice ?: stateFlow.value.notice,
+                noticeArg = result.noticeArg ?: stateFlow.value.noticeArg,
                 offline = stateFlow.value.offline || result.offline,
                 fromCache = stateFlow.value.fromCache || result.fromCache,
                 language = if (languageStillValid) language else null,

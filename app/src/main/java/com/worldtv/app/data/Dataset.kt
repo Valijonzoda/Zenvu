@@ -3,10 +3,16 @@ package com.worldtv.app.data
 import com.worldtv.app.domain.ContentKind
 import com.worldtv.app.domain.Country
 import com.worldtv.app.domain.MediaEntry
+import com.worldtv.app.domain.UserNotice
 import org.json.JSONArray
 import org.json.JSONObject
 
-class DatasetException(message: String, cause: Throwable? = null) : Exception(message, cause)
+class DatasetException(
+    message: String,
+    cause: Throwable? = null,
+    val notice: UserNotice? = null,
+    val noticeArg: String? = null,
+) : Exception(message, cause)
 
 /**
  * Paths verified from https://github.com/Valijonzoda/famelack-data
@@ -27,7 +33,7 @@ object DatasetParser {
         val root = try {
             JSONObject(json.trim())
         } catch (error: Exception) {
-            throw DatasetException("The country list could not be read.", error)
+            throw DatasetException("The country list could not be read.", error, UserNotice.COUNTRY_LIST)
         }
         val countries = ArrayList<Country>(root.length())
         val keys = root.keys()
@@ -49,12 +55,12 @@ object DatasetParser {
     fun parseChannels(json: String, kind: ContentKind): List<MediaEntry> {
         val trimmed = json.trim()
         if (!trimmed.startsWith("[")) {
-            throw DatasetException("The channel list was not in the expected format.")
+            throw DatasetException("The channel list was not in the expected format.", notice = UserNotice.CHANNEL_FORMAT)
         }
         val array = try {
             JSONArray(trimmed)
         } catch (error: Exception) {
-            throw DatasetException("The channel list could not be read.", error)
+            throw DatasetException("The channel list could not be read.", error, UserNotice.CHANNEL_READ)
         }
         val entries = ArrayList<MediaEntry>(array.length())
         for (index in 0 until array.length()) {

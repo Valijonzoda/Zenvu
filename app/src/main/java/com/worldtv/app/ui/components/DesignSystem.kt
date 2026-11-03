@@ -67,8 +67,14 @@ import com.worldtv.app.domain.ContentKind
 import com.worldtv.app.domain.CountryFlags
 import com.worldtv.app.domain.MediaEntry
 import com.worldtv.app.ui.theme.LocalWt
-import com.worldtv.app.ui.theme.Outfit
+import com.worldtv.app.ui.theme.LocalAppFont
 import kotlin.math.abs
+
+fun ContentKind.labelRes(): Int = when (this) {
+    ContentKind.TV -> R.string.mode_tv
+    ContentKind.RADIO -> R.string.mode_radio
+    ContentKind.WEBCAM -> R.string.mode_webcam
+}
 
 private val ArtGradients = listOf(
     Color(0xFFFF512F) to Color(0xFFF09819),
@@ -175,9 +181,9 @@ fun ModeSwitch(
                     modifier = Modifier.size(22.dp),
                 )
                 Text(
-                    kind.title,
+                    stringResource(kind.labelRes()),
                     color = if (active) Color.White else palette.muted,
-                    fontFamily = Outfit,
+                    fontFamily = LocalAppFont.current,
                     fontWeight = FontWeight.Medium,
                     fontSize = 13.sp,
                 )
@@ -255,12 +261,12 @@ fun CountryRow(
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(name, style = MaterialTheme.typography.titleMedium, color = palette.heading, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(capital, color = palette.muted, fontSize = 13.sp, fontFamily = Outfit, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(capital, color = palette.muted, fontSize = 13.sp, fontFamily = LocalAppFont.current, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Text(
             countLabel,
             color = palette.accent,
-            fontFamily = Outfit,
+            fontFamily = LocalAppFont.current,
             fontWeight = FontWeight.SemiBold,
             fontSize = 13.sp,
             modifier = Modifier
@@ -328,7 +334,7 @@ fun ChannelCard(
                 if (playing) MetaTag(stringResource(R.string.now_playing), TagKind.Live)
                 else if (entry.kind == ContentKind.TV && !favoriteTags) MetaTag(stringResource(R.string.tag_live), TagKind.Live)
                 if (favoriteTags) {
-                    MetaTag(entry.kind.title, TagKind.Plain)
+                    MetaTag(stringResource(entry.kind.labelRes()), TagKind.Plain)
                     MetaTag(entry.countryCode.uppercase(), TagKind.Plain)
                 } else {
                     entry.languages.firstOrNull()?.let { MetaTag(it.lowercase(), TagKind.Plain) }
@@ -357,7 +363,7 @@ fun MetaTag(label: String, kind: TagKind) {
     Text(
         label,
         color = fg,
-        fontFamily = Outfit,
+        fontFamily = LocalAppFont.current,
         fontWeight = FontWeight.Medium,
         fontSize = 12.sp,
         maxLines = 1,
@@ -443,7 +449,7 @@ fun EmptyBlock(icon: ImageVector, message: String) {
     ) {
         Icon(icon, contentDescription = null, tint = palette.muted, modifier = Modifier.size(40.dp))
         Spacer(Modifier.height(10.dp))
-        Text(message, color = palette.muted, fontSize = 14.sp, fontFamily = Outfit, textAlign = TextAlign.Center)
+        Text(message, color = palette.muted, fontSize = 14.sp, fontFamily = LocalAppFont.current, textAlign = TextAlign.Center)
     }
 }
 
@@ -454,7 +460,7 @@ fun StatusBanner(text: String, modifier: Modifier = Modifier) {
         text,
         color = palette.warnText,
         fontSize = 14.sp,
-        fontFamily = Outfit,
+        fontFamily = LocalAppFont.current,
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
@@ -541,7 +547,7 @@ private fun NavItem(
         Text(
             label,
             color = if (selected) palette.accent else palette.muted,
-            fontFamily = Outfit,
+            fontFamily = LocalAppFont.current,
             fontWeight = FontWeight.Medium,
             fontSize = 12.sp,
         )

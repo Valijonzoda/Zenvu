@@ -7,11 +7,12 @@ import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
+import android.graphics.Outline
 import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.webkit.CookieManager
-import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -68,7 +69,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -79,7 +79,6 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
@@ -110,7 +109,7 @@ import com.worldtv.app.ui.components.ChannelCard
 import com.worldtv.app.ui.components.artBrush
 import com.worldtv.app.ui.components.artIndex
 import com.worldtv.app.ui.theme.LocalWt
-import com.worldtv.app.ui.theme.Outfit
+import com.worldtv.app.ui.theme.LocalAppFont
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -335,11 +334,14 @@ private fun VideoStage(
         chrome = false
     }
     if (!compact && entry.kind != ContentKind.RADIO) KeepScreenOn()
-    val stageModifier = (if (direct) modifier.background(Color.Black) else modifier.background(artBrush(artIndex(entry.key)))).clipToBounds()
+    val density = LocalDensity.current
+    val cornerPx = with(density) { 18.dp.toPx() }
+    val stageModifier = (if (direct) modifier.background(Color.Black) else modifier.background(artBrush(artIndex(entry.key))))
+        .then(if (compact) Modifier else Modifier.clipToBounds())
     Box(stageModifier) {
         when {
             plan is PlaybackPlan.Unsupported -> {
-                Text(plan.reason, color = Color.White, modifier = Modifier.align(Alignment.Center).padding(20.dp), fontFamily = Outfit)
+                Text(stringResource(R.string.unsupported_body), color = Color.White, modifier = Modifier.align(Alignment.Center).padding(20.dp), fontFamily = LocalAppFont.current)
             }
             useEmbed -> {
                 val embedUrl = when (plan) {
@@ -364,30 +366,29 @@ private fun VideoStage(
                 }
             }
             else -> {
-                key(compact, fullscreen) {
-                    AndroidView(
-                        modifier = Modifier.fillMaxSize(),
-                        factory = { viewContext ->
-                            (LayoutInflater.from(viewContext).inflate(R.layout.texture_player_view, null) as PlayerView).apply {
-                                this.player = player
-                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                                setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                                isClickable = false
-                                isFocusable = false
-                                setOnTouchListener { _, _ -> false }
-                            }
-                        },
-                        update = { view ->
-                            view.player = player
-                            view.layoutParams = android.view.ViewGroup.LayoutParams(
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                            )
-                            view.requestLayout()
-                        },
-                        onRelease = { it.player = null },
-                    )
-                }
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { viewContext ->
+                        (LayoutInflater.from(viewContext).inflate(R.layout.texture_player_view, null) as PlayerView).apply {
+                            this.player = player
+                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                            isClickable = false
+                            isFocusable = false
+                            setOnTouchListener { _, _ -> false }
+                        }
+                    },
+                    update = { view ->
+                        view.player = player
+                        view.layoutParams = android.view.ViewGroup.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        )
+                        view.roundSurface(if (compact) cornerPx else 0f)
+                        view.requestLayout()
+                    },
+                    onRelease = { it.player = null },
+                )
             }
         }
         if (!compact) {
@@ -403,9 +404,14 @@ private fun VideoStage(
         }
         if (!compact && error != null) {
             Column(Modifier.align(Alignment.Center).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(stringResource(R.string.player_error_title), color = Color.White, fontFamily = Outfit, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.player_error_title), color = Color.White, fontFamily = LocalAppFont.current, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
-                Text(error.orEmpty(), color = Color.White, fontFamily = Outfit, fontSize = 14.sp)
+                Text(
+                    stringResource(if (entry.geoBlocked) R.string.playback_failed_region else R.string.playback_failed),
+                    color = Color.White,
+                    fontFamily = LocalAppFont.current,
+                    fontSize = 14.sp,
+                )
                 TextButton(onClick = {
                     error = null
                     chrome = true
@@ -451,8 +457,8 @@ private fun VideoStage(
                     StageButton(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), onBack)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(entry.name, color = Color.White, fontFamily = Outfit, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, maxLines = 1)
-                        Text(countryName, color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, fontFamily = Outfit, maxLines = 1)
+                        Text(entry.name, color = Color.White, fontFamily = LocalAppFont.current, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, maxLines = 1)
+                        Text(countryName, color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, fontFamily = LocalAppFont.current, maxLines = 1)
                     }
                     StageButton(
                         if (favorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
@@ -534,7 +540,7 @@ private fun RadioStage(
             Text(
                 stringResource(R.string.radio_notification_denied),
                 color = Color.White,
-                fontFamily = Outfit,
+                fontFamily = LocalAppFont.current,
                 fontSize = 13.sp,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp),
             )
@@ -556,7 +562,12 @@ private fun RadioStage(
         }
         if (radio.error != null) {
             Column(Modifier.align(Alignment.BottomCenter).padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(radio.error.orEmpty(), color = Color.White, fontFamily = Outfit, fontSize = 14.sp)
+                Text(
+                    radioFailureText(entry, radio.noDirectAudio),
+                    color = Color.White,
+                    fontFamily = LocalAppFont.current,
+                    fontSize = 14.sp,
+                )
                 TextButton(onClick = container.radio::retry) { Text(stringResource(R.string.retry)) }
             }
         }
@@ -579,7 +590,7 @@ private fun RadioStage(
         Text(
             entry.name,
             color = Color.White,
-            fontFamily = Outfit,
+            fontFamily = LocalAppFont.current,
             fontWeight = FontWeight.SemiBold,
             fontSize = 18.sp,
             maxLines = 1,
@@ -589,7 +600,7 @@ private fun RadioStage(
             countryName,
             color = Color.White.copy(alpha = 0.85f),
             fontSize = 14.sp,
-            fontFamily = Outfit,
+            fontFamily = LocalAppFont.current,
             modifier = Modifier.align(Alignment.TopCenter).padding(top = 40.dp),
         )
     }
@@ -722,16 +733,8 @@ private fun EmbedView(url: String, commands: PlaybackCommands?, onReady: () -> U
                 settings.mediaPlaybackRequiresUserGesture = false
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = true
-                settings.userAgentString = settings.userAgentString
-                    .replace("; wv", "")
-                    .replace("Version/4.0 ", "")
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                webChromeClient = object : WebChromeClient() {
-                    override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
-                        callback?.onCustomViewHidden()
-                    }
-                }
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) {
                         ready.value()
@@ -748,13 +751,7 @@ private fun EmbedView(url: String, commands: PlaybackCommands?, onReady: () -> U
             view.requestLayout()
             if (view.tag != url) {
                 view.tag = url
-                view.loadDataWithBaseURL(
-                    "https://www.youtube-nocookie.com",
-                    embedDocument(url),
-                    "text/html",
-                    "UTF-8",
-                    null,
-                )
+                view.loadUrl(url)
             }
         },
         onRelease = { it.destroy() },
@@ -779,27 +776,6 @@ private fun EmbedView(url: String, commands: PlaybackCommands?, onReady: () -> U
             if (toggle != null && commands?.toggle === toggle) commands.toggle = {}
         }
     }
-}
-
-private fun embedDocument(url: String): String {
-    val source = url.replace("\"", "&quot;")
-    return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <meta name="referrer" content="strict-origin-when-cross-origin">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-          html,body{margin:0;padding:0;height:100%;background:#000;overflow:hidden}
-          iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
-        </style>
-        </head>
-        <body>
-        <iframe src="$source" referrerpolicy="strict-origin-when-cross-origin"
-          allow="autoplay; encrypted-media; picture-in-picture"></iframe>
-        </body>
-        </html>
-    """.trimIndent()
 }
 
 @Composable
@@ -851,15 +827,13 @@ private fun VideoFloat(
                 .offset { windowOffset }
                 .width(maxWidth * 0.78f)
                 .aspectRatio(16f / 9f)
-                .shadow(18.dp, shape)
-                .clip(shape)
+                .shadow(18.dp, shape, clip = false)
                 .background(Color.Black),
         ) {
             preview()
             Box(
                 Modifier
                     .fillMaxSize()
-                    .graphicsLayer { }
                     .pointerInput(maxX, maxY, marginPx) {
                         val slop = 32.dp.toPx()
                         awaitEachGesture {
@@ -963,7 +937,7 @@ private fun RadioFloat(
             Text(
                 entry.name,
                 color = palette.heading,
-                fontFamily = Outfit,
+                fontFamily = LocalAppFont.current,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 15.sp,
                 maxLines = 1,
@@ -972,7 +946,7 @@ private fun RadioFloat(
             Text(
                 countryName,
                 color = palette.muted,
-                fontFamily = Outfit,
+                fontFamily = LocalAppFont.current,
                 fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1014,6 +988,31 @@ private fun FloatIcon(
     ) {
         Icon(icon, contentDescription = description, tint = tint ?: palette.heading, modifier = Modifier.size(20.dp))
     }
+}
+
+private fun PlayerView.roundSurface(radiusPx: Float) {
+    val surface = videoSurfaceView ?: return
+    if (radiusPx <= 0f) {
+        surface.clipToOutline = false
+        return
+    }
+    if (surface.width == 0 || surface.height == 0) {
+        surface.post { roundSurface(radiusPx) }
+        return
+    }
+    surface.outlineProvider = object : ViewOutlineProvider() {
+        override fun getOutline(view: View, outline: Outline) {
+            outline.setRoundRect(0, 0, view.width, view.height, radiusPx)
+        }
+    }
+    surface.clipToOutline = true
+}
+
+@Composable
+private fun radioFailureText(entry: com.worldtv.app.domain.MediaEntry, noDirectAudio: Boolean): String = when {
+    noDirectAudio -> stringResource(R.string.error_no_direct_audio)
+    entry.geoBlocked -> stringResource(R.string.playback_failed_region)
+    else -> stringResource(R.string.playback_failed)
 }
 
 private class FloatSpot {

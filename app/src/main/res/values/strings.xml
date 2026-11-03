@@ -38,6 +38,7 @@
     <string name="empty_favorites_title">Nothing saved yet</string>
     <string name="empty_favorites_body">Tap the heart on any channel.</string>
     <string name="settings_language">App language</string>
+    <string name="language_choose">Choose a language</string>
     <string name="settings_theme">Theme</string>
     <string name="theme_dark">Dark</string>
     <string name="theme_light">Light</string>
@@ -58,6 +59,9 @@
     <string name="offline_banner">You are offline. Showing saved listings.</string>
     <string name="embed_note">This source is an embedded player. If the picture stays blank, the operator may block playback inside the app.</string>
     <string name="unsupported_title">This source cannot be played here</string>
+    <string name="unsupported_body">This listing has no playable address. It may have been removed from the dataset.</string>
+    <string name="playback_failed">This stream didn\'t start. It may be offline, restricted where you are, or use a format this device can\'t play.</string>
+    <string name="playback_failed_region">This stream didn\'t start. It may be offline, restricted where you are, or use a format this device can\'t play. This listing is marked as region locked.</string>
     <string name="player_error_title">Playback did not start</string>
     <string name="try_embed">Try embedded source</string>
     <string name="radio_notification_denied">You can listen here. Without notifications you cannot control playback from the shade, and it will not keep playing in the background.</string>
@@ -127,4 +131,21 @@
     <string name="migration_title">Add saved channels?</string>
     <string name="migration_body">This device already has favorites. Add them to your account without duplicates?</string>
     <string name="migration_add">Add</string>
+    <string name="error_offline_unsaved">You\'re offline, and this list hasn\'t been saved on the device yet.</string>
+    <string name="error_no_saved_copy">No saved copy of this list is available.</string>
+    <string name="error_saved_unreadable">A saved listing could not be read. Clear saved listings in Settings and try again.</string>
+    <string name="error_dataset_empty">The dataset file was empty.</string>
+    <string name="error_no_internet">No internet connection, or the dataset host could not be found.</string>
+    <string name="error_timeout">The dataset host took too long to respond.</string>
+    <string name="error_download_interrupted">The download was interrupted. Check your connection and try again.</string>
+    <string name="error_listing_missing">That listing file is not in the dataset right now.</string>
+    <string name="error_host_refused">The dataset host refused the request (HTTP %1$s). Try again shortly.</string>
+    <string name="error_host_problem">The dataset host had a problem (HTTP %1$s).</string>
+    <string name="error_request_failed">The dataset request failed (HTTP %1$s).</string>
+    <string name="error_country_list">The country list could not be read.</string>
+    <string name="error_channel_format">The channel list was not in the expected format.</string>
+    <string name="error_channel_read">The channel list could not be read.</string>
+    <string name="error_dataset_load">Couldn\'t load the dataset.</string>
+    <string name="error_dataset_read">Couldn\'t read the dataset.</string>
+    <string name="error_no_direct_audio">This station has no direct audio stream.</string>
 </resources>

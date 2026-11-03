@@ -1,5 +1,6 @@
 package com.worldtv.app.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -51,11 +52,17 @@ import com.worldtv.app.ui.account.AccountSettingsCard
 import com.worldtv.app.ui.account.LocalAccountModel
 import com.worldtv.app.BuildConfig
 import com.worldtv.app.R
+import com.worldtv.app.data.LocaleApplier
+import com.worldtv.app.domain.AppLanguages
+import com.worldtv.app.domain.CountrySelection
 import com.worldtv.app.domain.ContentKind
+import com.worldtv.app.domain.UserNotice
 import com.worldtv.app.domain.MediaEntry
 import com.worldtv.app.domain.ThemeChoice
 import com.worldtv.app.domain.UserSettings
 import com.worldtv.app.ui.catalog.CatalogUiState
+import com.worldtv.app.ui.language.LanguagePicker
+import com.worldtv.app.ui.language.applyAppLanguage
 import com.worldtv.app.ui.components.ChannelCard
 import com.worldtv.app.ui.components.CountryRow
 import com.worldtv.app.ui.components.CountrySearchField
@@ -67,7 +74,7 @@ import com.worldtv.app.ui.components.StatusBanner
 import com.worldtv.app.ui.components.WtSwitch
 import com.worldtv.app.ui.components.wtShadow
 import com.worldtv.app.ui.theme.LocalWt
-import com.worldtv.app.ui.theme.Outfit
+import com.worldtv.app.ui.theme.LocalAppFont
 import kotlin.math.roundToInt
 
 @Composable
@@ -82,8 +89,8 @@ fun HomePane(
     val palette = LocalWt.current
     val query = state.countryQuery.trim()
     val countries = remember(state.countries, query) {
-        if (query.isEmpty()) state.countries
-        else state.countries.filter { it.name.contains(query, ignoreCase = true) }
+        val filtered = if (query.isEmpty()) state.countries else state.countries.filter { CountrySelection.matches(it, query) }
+        filtered.sortedBy { CountrySelection.displayName(it.code, it.name).lowercase() }
     }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -100,7 +107,7 @@ fun HomePane(
                 Spacer(Modifier.padding(start = 16.dp))
                 Text(
                     stringResource(R.string.app_name),
-                    fontFamily = Outfit,
+                    fontFamily = LocalAppFont.current,
                     fontWeight = FontWeight.Bold,
                     fontSize = 32.sp,
                     color = palette.heading,
@@ -108,7 +115,7 @@ fun HomePane(
                 )
             }
             Spacer(Modifier.height(6.dp))
-            Text(stringResource(R.string.home_subtitle), color = palette.muted, fontSize = 14.sp, fontFamily = Outfit)
+            Text(stringResource(R.string.home_subtitle), color = palette.muted, fontSize = 14.sp, fontFamily = LocalAppFont.current)
             Spacer(Modifier.height(18.dp))
             ModeSwitch(selected = state.kind, onSelect = onKind)
             Spacer(Modifier.height(14.dp))
@@ -117,7 +124,8 @@ fun HomePane(
         if (state.notice != null || state.offline) {
             item {
                 StatusBanner(
-                    state.notice ?: stringResource(R.string.offline_banner),
+                    state.notice?.let { noticeText(it, state.noticeArg) }
+                        ?: stringResource(R.string.offline_banner),
                 )
             }
         }
@@ -126,14 +134,14 @@ fun HomePane(
                 modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(stringResource(R.string.section_countries), color = palette.muted, fontSize = 14.sp, fontFamily = Outfit)
-                Text(countries.size.toString(), color = palette.muted, fontSize = 14.sp, fontFamily = Outfit)
+                Text(stringResource(R.string.section_countries), color = palette.muted, fontSize = 14.sp, fontFamily = LocalAppFont.current)
+                Text(countries.size.toString(), color = palette.muted, fontSize = 14.sp, fontFamily = LocalAppFont.current)
             }
         }
         when {
             state.loadingCountries && state.countries.isEmpty() -> item { LoadingRows() }
             state.countriesError != null && state.countries.isEmpty() -> item {
-                EmptyBlock(Icons.Outlined.Search, state.countriesError)
+                EmptyBlock(Icons.Outlined.Search, noticeText(state.countriesError, state.noticeArg))
                 TextButton(onClick = onRefresh) { Text(stringResource(R.string.retry)) }
             }
             countries.isEmpty() -> item {
@@ -142,7 +150,7 @@ fun HomePane(
             else -> items(countries, key = { it.code }) { country ->
                 CountryRow(
                     code = country.code,
-                    name = country.name,
+                    name = CountrySelection.displayName(country.code, country.name),
                     capital = country.capital,
                     countLabel = kindCount(state.kind, country.channelCount),
                     onClick = { onOpenCountry(country.code) },
@@ -184,13 +192,13 @@ fun CountryChannelsPane(
                     FlagBadge(country.code, width = 48.dp, height = 34.dp)
                     Spacer(Modifier.padding(start = 12.dp))
                     Column {
-                        Text(country.name, color = palette.heading, fontFamily = Outfit, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+                        Text(CountrySelection.displayName(country.code, country.name), color = palette.heading, fontFamily = LocalAppFont.current, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
                         val count = if (state.loadingChannels) country.channelCount else channels.size
                         Text(
                             "${kindCount(state.kind, count)} · ${country.capital}",
                             color = palette.muted,
                             fontSize = 14.sp,
-                            fontFamily = Outfit,
+                            fontFamily = LocalAppFont.current,
                         )
                     }
                 }
@@ -203,7 +211,7 @@ fun CountryChannelsPane(
                 when {
                     state.loadingChannels && channels.isEmpty() -> item { LoadingRows(card = true) }
                     state.channelsError != null && channels.isEmpty() -> item {
-                        EmptyBlock(Icons.Outlined.Search, state.channelsError)
+                        EmptyBlock(Icons.Outlined.Search, noticeText(state.channelsError, state.noticeArg))
                         TextButton(onClick = onRefresh) { Text(stringResource(R.string.retry)) }
                     }
                     channels.isEmpty() -> item {
@@ -246,7 +254,7 @@ fun FavoritesPane(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Text(stringResource(R.string.nav_favorites), fontFamily = Outfit, fontWeight = FontWeight.Bold, fontSize = 30.sp, color = palette.heading, letterSpacing = (-0.6).sp)
+            Text(stringResource(R.string.nav_favorites), fontFamily = LocalAppFont.current, fontWeight = FontWeight.Bold, fontSize = 30.sp, color = palette.heading, letterSpacing = (-0.6).sp)
             Text(stringResource(subtitle), color = palette.muted, fontSize = 14.sp, fontFamily = FontFamily.Default)
             if (!signedIn && account.accountsEnabled) {
                 TextButton(onClick = account::openSignIn) {
@@ -287,6 +295,15 @@ fun SettingsPane(
     val palette = LocalWt.current
     val context = LocalContext.current
     var confirmClear by remember { mutableStateOf(false) }
+    var choosingLanguage by remember { mutableStateOf(false) }
+    if (choosingLanguage) {
+        BackHandler { choosingLanguage = false }
+        LanguagePicker { tag ->
+            choosingLanguage = false
+            applyAppLanguage(context, tag)
+        }
+        return
+    }
     var cacheToken by remember { mutableIntStateOf(0) }
     val cacheLabel = remember(cacheToken) { cacheSizeLabel(context) }
     Column(
@@ -295,24 +312,37 @@ fun SettingsPane(
             .verticalScroll(rememberScrollState())
             .padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 16.dp),
     ) {
-        Text(stringResource(R.string.nav_settings), fontFamily = Outfit, fontWeight = FontWeight.Bold, fontSize = 30.sp, color = palette.heading, letterSpacing = (-0.6).sp)
+        Text(stringResource(R.string.nav_settings), fontFamily = LocalAppFont.current, fontWeight = FontWeight.Bold, fontSize = 30.sp, color = palette.heading, letterSpacing = (-0.6).sp)
+        SettingCard {
+            SettingLine(showDivider = false, onClick = { choosingLanguage = true }) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.settings_language), color = palette.heading, fontSize = 16.sp, fontFamily = LocalAppFont.current)
+                    Text(
+                        AppLanguages.find(LocaleApplier.read(context))?.nativeName ?: stringResource(R.string.language_choose),
+                        color = palette.muted,
+                        fontSize = 13.sp,
+                        fontFamily = FontFamily.Default,
+                    )
+                }
+            }
+        }
         AccountSettingsCard(LocalAccountModel.current)
         SettingCard {
             SettingLine {
-                Text(stringResource(R.string.settings_theme), color = palette.heading, fontSize = 16.sp, fontFamily = Outfit)
+                Text(stringResource(R.string.settings_theme), color = palette.heading, fontSize = 16.sp, fontFamily = LocalAppFont.current)
                 ThemeMini(settings.theme, onTheme)
             }
             SettingLine(showDivider = true) {
                 Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.settings_fallback_title), color = palette.heading, fontSize = 16.sp, fontFamily = Outfit)
-                    Text(stringResource(R.string.settings_fallback), color = palette.muted, fontSize = 13.sp, fontFamily = Outfit)
+                    Text(stringResource(R.string.settings_fallback_title), color = palette.heading, fontSize = 16.sp, fontFamily = LocalAppFont.current)
+                    Text(stringResource(R.string.settings_fallback), color = palette.muted, fontSize = 13.sp, fontFamily = LocalAppFont.current)
                 }
                 WtSwitch(settings.autoFallbackStreams, stringResource(R.string.settings_fallback_title), onFallback)
             }
             SettingLine(showDivider = false) {
                 Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.settings_background_title), color = palette.heading, fontSize = 16.sp, fontFamily = Outfit)
-                    Text(stringResource(R.string.settings_background), color = palette.muted, fontSize = 13.sp, fontFamily = Outfit)
+                    Text(stringResource(R.string.settings_background_title), color = palette.heading, fontSize = 16.sp, fontFamily = LocalAppFont.current)
+                    Text(stringResource(R.string.settings_background), color = palette.muted, fontSize = 13.sp, fontFamily = LocalAppFont.current)
                 }
                 WtSwitch(settings.backgroundRadio, stringResource(R.string.settings_background_title), onBackgroundRadio)
             }
@@ -320,13 +350,13 @@ fun SettingsPane(
         SettingCard {
             SettingLine(onClick = { confirmClear = true }) {
                 Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.settings_clear_cache), color = palette.heading, fontSize = 16.sp, fontFamily = Outfit)
-                    Text(stringResource(R.string.clear_cache_hint), color = palette.muted, fontSize = 13.sp, fontFamily = Outfit)
+                    Text(stringResource(R.string.settings_clear_cache), color = palette.heading, fontSize = 16.sp, fontFamily = LocalAppFont.current)
+                    Text(stringResource(R.string.clear_cache_hint), color = palette.muted, fontSize = 13.sp, fontFamily = LocalAppFont.current)
                 }
                 Text(
                     cacheLabel,
                     color = palette.accent,
-                    fontFamily = Outfit,
+                    fontFamily = LocalAppFont.current,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 13.sp,
                     modifier = Modifier
@@ -336,16 +366,16 @@ fun SettingsPane(
                 )
             }
             SettingLine(showDivider = true, onClick = onPrivacy) {
-                Text(stringResource(R.string.privacy), color = palette.heading, fontSize = 16.sp, fontFamily = Outfit)
+                Text(stringResource(R.string.privacy), color = palette.heading, fontSize = 16.sp, fontFamily = LocalAppFont.current)
             }
             SettingLine(showDivider = false) {
                 Column {
-                    Text(stringResource(R.string.app_name), color = palette.heading, fontSize = 16.sp, fontFamily = Outfit)
+                    Text(stringResource(R.string.app_name), color = palette.heading, fontSize = 16.sp, fontFamily = LocalAppFont.current)
                     Text(
                         stringResource(R.string.settings_version_body, BuildConfig.VERSION_NAME),
                         color = palette.muted,
                         fontSize = 13.sp,
-                        fontFamily = Outfit,
+                        fontFamily = LocalAppFont.current,
                     )
                 }
             }
@@ -436,7 +466,7 @@ private fun ThemeMini(selected: ThemeChoice, onTheme: (ThemeChoice) -> Unit) {
             Text(
                 label,
                 color = if (on) palette.accent else palette.muted,
-                fontFamily = Outfit,
+                fontFamily = LocalAppFont.current,
                 fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
                 fontSize = 13.sp,
                 modifier = Modifier
@@ -458,9 +488,9 @@ fun PrivacyPane(modifier: Modifier = Modifier) {
             .verticalScroll(rememberScrollState())
             .padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 16.dp),
     ) {
-        Text(stringResource(R.string.privacy), fontFamily = Outfit, fontWeight = FontWeight.Bold, fontSize = 30.sp, color = palette.heading)
+        Text(stringResource(R.string.privacy), fontFamily = LocalAppFont.current, fontWeight = FontWeight.Bold, fontSize = 30.sp, color = palette.heading)
         Spacer(Modifier.height(12.dp))
-        Text(stringResource(R.string.privacy_body), color = palette.text, fontSize = 16.sp, fontFamily = Outfit, lineHeight = 24.sp)
+        Text(stringResource(R.string.privacy_body), color = palette.text, fontSize = 16.sp, fontFamily = LocalAppFont.current, lineHeight = 24.sp)
     }
 }
 
@@ -477,6 +507,30 @@ private fun LoadingRows(card: Boolean = false) {
                     .background(palette.surface2),
             )
         }
+    }
+}
+
+@Composable
+fun noticeText(notice: UserNotice?, arg: String?): String {
+    if (notice == null) return ""
+    return when (notice) {
+        UserNotice.OFFLINE_UNSAVED -> stringResource(R.string.error_offline_unsaved)
+        UserNotice.NO_SAVED_COPY -> stringResource(R.string.error_no_saved_copy)
+        UserNotice.SAVED_UNREADABLE -> stringResource(R.string.error_saved_unreadable)
+        UserNotice.DATASET_EMPTY -> stringResource(R.string.error_dataset_empty)
+        UserNotice.NO_INTERNET -> stringResource(R.string.error_no_internet)
+        UserNotice.TIMEOUT -> stringResource(R.string.error_timeout)
+        UserNotice.DOWNLOAD_INTERRUPTED -> stringResource(R.string.error_download_interrupted)
+        UserNotice.LISTING_MISSING -> stringResource(R.string.error_listing_missing)
+        UserNotice.HOST_REFUSED -> stringResource(R.string.error_host_refused, arg.orEmpty())
+        UserNotice.HOST_PROBLEM -> stringResource(R.string.error_host_problem, arg.orEmpty())
+        UserNotice.REQUEST_FAILED -> stringResource(R.string.error_request_failed, arg.orEmpty())
+        UserNotice.COUNTRY_LIST -> stringResource(R.string.error_country_list)
+        UserNotice.CHANNEL_FORMAT -> stringResource(R.string.error_channel_format)
+        UserNotice.CHANNEL_READ -> stringResource(R.string.error_channel_read)
+        UserNotice.DATASET_LOAD -> stringResource(R.string.error_dataset_load)
+        UserNotice.DATASET_READ -> stringResource(R.string.error_dataset_read)
+        UserNotice.NO_DIRECT_AUDIO -> stringResource(R.string.error_no_direct_audio)
     }
 }
 

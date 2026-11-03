@@ -66,6 +66,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.worldtv.app.AppContainer
 import com.worldtv.app.R
 import com.worldtv.app.domain.ContentKind
+import com.worldtv.app.ui.components.labelRes
 import com.worldtv.app.domain.MediaEntry
 import com.worldtv.app.domain.ThemeChoice
 import com.worldtv.app.domain.UserSettings
@@ -84,7 +85,7 @@ import com.worldtv.app.ui.screens.HomePane
 import com.worldtv.app.ui.screens.PrivacyPane
 import com.worldtv.app.ui.screens.SettingsPane
 import com.worldtv.app.ui.theme.LocalWt
-import com.worldtv.app.ui.theme.Outfit
+import com.worldtv.app.ui.theme.LocalAppFont
 import com.worldtv.app.ui.theme.Space
 import com.worldtv.app.ui.theme.WorldTvTheme
 import kotlinx.coroutines.launch
@@ -356,6 +357,12 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
     val cover = fullscreen && !inline && !inPlayer
 
     WorldTvTheme(choice = settings.theme, television = television, kind = catalog.kind) {
+    if (com.worldtv.app.data.LocaleApplier.read(context) == null) {
+        com.worldtv.app.ui.language.LanguagePicker { tag ->
+            com.worldtv.app.ui.language.applyAppLanguage(context, tag)
+        }
+        return@WorldTvTheme
+    }
     CompositionLocalProvider(LocalAccountModel provides accountModel) {
     Box(Modifier.fillMaxSize().background(LocalWt.current.bg)) {
         if (television) {
@@ -737,7 +744,7 @@ private fun TvRail(
             Text(
                 stringResource(R.string.app_name),
                 style = MaterialTheme.typography.headlineSmall,
-                fontFamily = Outfit,
+                fontFamily = LocalAppFont.current,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = (-0.03).em,
             )
@@ -745,7 +752,7 @@ private fun TvRail(
         Spacer(Modifier.height(Space.md))
         ContentKind.entries.forEach { item ->
             RailButton(
-                label = item.title,
+                label = stringResource(item.labelRes()),
                 selected = current == AppScreen.Catalog && kind == item,
                 onClick = { onKind(item); onCatalog() },
             )

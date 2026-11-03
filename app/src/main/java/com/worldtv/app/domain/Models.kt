@@ -44,11 +44,33 @@ data class UserSettings(
     val backgroundRadio: Boolean = true,
 )
 
+enum class UserNotice {
+    OFFLINE_UNSAVED,
+    NO_SAVED_COPY,
+    SAVED_UNREADABLE,
+    DATASET_EMPTY,
+    NO_INTERNET,
+    TIMEOUT,
+    DOWNLOAD_INTERRUPTED,
+    LISTING_MISSING,
+    HOST_REFUSED,
+    HOST_PROBLEM,
+    REQUEST_FAILED,
+    COUNTRY_LIST,
+    CHANNEL_FORMAT,
+    CHANNEL_READ,
+    DATASET_LOAD,
+    DATASET_READ,
+    NO_DIRECT_AUDIO,
+}
+
 data class CatalogResult<T>(
     val value: T?,
     val fromCache: Boolean,
     val offline: Boolean,
     val errorMessage: String?,
+    val notice: UserNotice? = null,
+    val noticeArg: String? = null,
 )
 
 sealed interface PlaybackPlan {
