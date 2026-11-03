@@ -5,9 +5,9 @@ Independent Android directory for live TV, online radio, and webcams. It runs on
 ## Download
 
 <!-- release:start -->
-**APK 1.0.11** (2026-11-03): [Zenvu-1.0.11.apk](https://github.com/Valijonzoda/Zenvu/releases/download/v1.0.11/Zenvu-1.0.11.apk)
+**APK 1.0.12** (2026-11-03): [Zenvu-1.0.12.apk](https://github.com/Valijonzoda/Zenvu/releases/download/v1.0.12/Zenvu-1.0.12.apk)
 
-**AAB 1.0.11** (2026-11-03): [Zenvu-1.0.11.aab](https://github.com/Valijonzoda/Zenvu/releases/download/v1.0.11/Zenvu-1.0.11.aab)
+**AAB 1.0.12** (2026-11-03): [Zenvu-1.0.12.aab](https://github.com/Valijonzoda/Zenvu/releases/download/v1.0.12/Zenvu-1.0.12.aab)
 <!-- release:end -->
 
 A push to `master` publishes a GitHub Release. The patch version increases by `0.0.1` unless the commit message contains `version: 1.2.0` or the workflow is started manually with a version. `versionCode` is `major * 10000 + minor * 100 + patch` (1.0.11 is 10011). Minor and patch stay in 0..99 so each newer version gets a higher code. The release contains the signed APK and AAB.
