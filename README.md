@@ -5,7 +5,7 @@ Independent Android directory for live TV, online radio, and webcams. It runs on
 ## Download
 
 <!-- release:start -->
-**APK 1.0.10** (2026-11-03): [WorldTV-1.0.10.apk](https://github.com/Valijonzoda/Zenvu/releases/download/v1.0.10/WorldTV-1.0.10.apk)
+**APK 1.0.10** (2026-11-03): [Zenvu-1.0.10.apk](https://github.com/Valijonzoda/Zenvu/releases/download/v1.0.10/Zenvu-1.0.10.apk)
 <!-- release:end -->
 
 A push to `master` publishes a GitHub Release. The patch version increases by `0.0.1` unless the commit message contains `version: 1.2.0` or the workflow is started manually with a version.
