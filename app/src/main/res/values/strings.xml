@@ -3,7 +3,7 @@
     <string name="app_name">Zenvu</string>
     <string name="mode_tv">TV</string>
     <string name="mode_radio">Radio</string>
-    <string name="mode_webcam">Webcam</string>
+    <string name="mode_webcam">Webcams</string>
     <string name="nav_discover">Explore</string>
     <string name="nav_favorites">Favorites</string>
     <string name="nav_settings">Settings</string>
@@ -37,6 +37,7 @@
     <string name="empty_country">This country has no listings in the dataset.</string>
     <string name="empty_favorites_title">Nothing saved yet</string>
     <string name="empty_favorites_body">Tap the heart on any channel.</string>
+    <string name="settings_language">App language</string>
     <string name="settings_theme">Theme</string>
     <string name="theme_dark">Dark</string>
     <string name="theme_light">Light</string>
@@ -46,7 +47,7 @@
     <string name="settings_background">Keep radio playing when you leave the player</string>
     <string name="settings_storage">Storage</string>
     <string name="settings_clear_cache">Clear saved listings</string>
-    <string name="settings_clear_cache_body">Removes downloaded channel lists. Favorites stay on this device.</string>
+    <string name="settings_clear_cache_body">Removes downloaded channel lists. Favorites in your account are not removed.</string>
     <string name="clear">Clear</string>
     <string name="cancel">Cancel</string>
     <string name="cache_cleared">Saved listings cleared</string>
@@ -69,6 +70,7 @@
     <string name="section_countries">Countries</string>
     <string name="empty_country_search">No country found.\nTry another name.</string>
     <string name="favorites_subtitle">Saved on this device</string>
+    <string name="favorites_subtitle_account">Saved in your account</string>
     <string name="more_in">More in %1$s</string>
     <string name="live">LIVE</string>
     <string name="tag_live">Live</string>
@@ -80,7 +82,7 @@
     <string name="clear_cache_hint">Listings stay available offline</string>
     <string name="settings_fallback_title">Next address</string>
     <string name="settings_background_title">Background radio</string>
-    <string name="privacy_body">Zenvu does not ask you to create an account. Favorites, theme, and the last country you opened are stored only on this device.\n\nThe app downloads channel lists from GitHub (the public Famelack dataset). GitHub can see the network address of that request. When you press play, this device connects directly to the stream operator or, for embedded webcams, to YouTube. Those services receive the usual technical data a player sends, including your IP address. Zenvu does not run its own analytics or advertising SDK.\n\nSome listings are marked region locked. A stream can also fail because it is offline or uses a format this device cannot play.\n\nClear saved listings in Settings to delete the downloaded catalog. Uninstalling the app removes favorites and settings.\n\nZenvu is an independent directory. It is not the official Famelack app and it is not operated by the channels, stations, or webcam owners.</string>
+    <string name="privacy_body">You can watch without an account. If you sign in, Zenvu stores your email and the channels you save in Firebase so favorites follow the account. Theme and the last country stay on this device.\n\nDelete the account in Settings. That removes the Firebase user and the saved favorites. You can also open the deletion page: https://valijonzoda.github.io/Zenvu/delete-account/\n\nThe app downloads channel lists from GitHub (the public Famelack dataset). GitHub can see the network address of that request. When you press play, this device connects directly to the stream operator or, for embedded webcams, to YouTube. Those services receive the usual technical data a player sends, including your IP address.\n\nSome listings are marked region locked. A stream can also fail because it is offline or uses a format this device cannot play.\n\nClear saved listings in Settings to delete the downloaded catalog. Uninstalling the app removes on-device settings. Favorites stored in an account stay until you delete the account.\n\nZenvu is an independent directory. It is not the official Famelack app and it is not operated by the channels, stations, or webcam owners.</string>
     <plurals name="channel_count">
         <item quantity="one">%d channel</item>
         <item quantity="other">%d channels</item>
@@ -93,4 +95,36 @@
         <item quantity="one">%d camera</item>
         <item quantity="other">%d cameras</item>
     </plurals>
+    <string name="account_title">Account</string>
+    <string name="account_signed_out">Sign in to save favorites.</string>
+    <string name="account_signed_in">Signed in</string>
+    <string name="account_sign_in">Sign in</string>
+    <string name="account_sign_up">Create account</string>
+    <string name="account_sign_out">Sign out</string>
+    <string name="account_delete">Delete account</string>
+    <string name="account_delete_title">Delete account?</string>
+    <string name="account_delete_body">This deletes the account and the favorites stored in it. This cannot be undone.</string>
+    <string name="account_delete_confirm">Delete</string>
+    <string name="account_not_now">Not now</string>
+    <string name="account_deletion_page">Data deletion page</string>
+    <string name="accounts_disabled">Accounts are turned off in this build.</string>
+    <string name="auth_required_body">Sign in or create an account to save favorites</string>
+    <string name="auth_email">Email</string>
+    <string name="auth_password">Password</string>
+    <string name="auth_google">Continue with Google</string>
+    <string name="auth_forgot">Forgot password?</string>
+    <string name="auth_switch_register">Create an account</string>
+    <string name="auth_switch_sign_in">Already have an account? Sign in</string>
+    <string name="auth_reset_sent">Check your email for a reset link.</string>
+    <string name="auth_error_email">Enter a valid email.</string>
+    <string name="auth_error_password">Wrong password.</string>
+    <string name="auth_error_in_use">This email is already registered.</string>
+    <string name="auth_error_weak">Use at least 8 characters.</string>
+    <string name="auth_error_missing">No account for this email.</string>
+    <string name="auth_error_network">No network connection.</string>
+    <string name="auth_error_recent">Enter your password to confirm it is you.</string>
+    <string name="auth_error_unknown">Something went wrong. Try again.</string>
+    <string name="migration_title">Add saved channels?</string>
+    <string name="migration_body">This device already has favorites. Add them to your account without duplicates?</string>
+    <string name="migration_add">Add</string>
 </resources>

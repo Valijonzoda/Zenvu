@@ -1,46 +1,81 @@
 package com.worldtv.app.data
 
+import com.worldtv.app.domain.CachedFavorite
 import com.worldtv.app.domain.ContentKind
-import com.worldtv.app.domain.FavoritesRepository
 import com.worldtv.app.domain.MediaEntry
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-class FileFavoritesRepository(private val file: File) : FavoritesRepository {
-    private val mutex = Mutex()
-    private val state = MutableStateFlow(readFile())
+interface LocalFavoriteCache {
+    val entries: StateFlow<List<CachedFavorite>>
 
-    override val favorites: Flow<List<MediaEntry>> = state.asStateFlow()
+    suspend fun write(entries: List<CachedFavorite>)
 
-    override suspend fun toggle(entry: MediaEntry) {
-        mutex.withLock {
-            val current = state.value
-            val updated = if (current.any { it.key == entry.key }) {
-                current.filterNot { it.key == entry.key }
-            } else {
-                listOf(entry) + current
-            }
-            writeFile(updated)
-            state.value = updated
+    suspend fun clear()
+}
+
+interface LegacyFavoriteStore {
+    fun read(): List<CachedFavorite>
+
+    fun clearLegacy()
+}
+
+class FileFavoriteCache(private val file: File) : LocalFavoriteCache, LegacyFavoriteStore {
+    private val directory = file.parentFile ?: error("Favorites file needs a directory")
+    private val legacyFile = File(directory, "favorites-legacy.json")
+    private val marker = File(directory, "favorites-legacy.marker")
+    private val lock = Any()
+
+    init {
+        captureLegacy()
+    }
+
+    private val state = MutableStateFlow(readActive())
+    override val entries: StateFlow<List<CachedFavorite>> = state.asStateFlow()
+
+    override suspend fun write(entries: List<CachedFavorite>) {
+        val text = FavoritesCodec.encodeCached(entries)
+        synchronized(lock) {
+            directory.mkdirs()
+            file.writeText(text)
+            state.value = entries
         }
     }
 
-    override suspend fun isFavorite(key: String): Boolean = state.value.any { it.key == key }
-
-    private fun readFile(): List<MediaEntry> {
-        if (!file.isFile) return emptyList()
-        return runCatching { FavoritesCodec.decode(file.readText()) }.getOrDefault(emptyList())
+    override suspend fun clear() {
+        write(emptyList())
     }
 
-    private fun writeFile(entries: List<MediaEntry>) {
-        file.parentFile?.mkdirs()
-        file.writeText(FavoritesCodec.encode(entries))
+    override fun read(): List<CachedFavorite> = synchronized(lock) { readStored(legacyFile) }
+
+    override fun clearLegacy() {
+        synchronized(lock) {
+            if (legacyFile.exists()) legacyFile.delete()
+        }
+    }
+
+    private fun captureLegacy() {
+        synchronized(lock) {
+            if (marker.exists()) return
+            if (file.isFile && file.length() > 0L && !legacyFile.exists()) {
+                directory.mkdirs()
+                file.copyTo(legacyFile)
+            }
+            if (file.exists()) file.delete()
+            directory.mkdirs()
+            marker.writeText("1")
+        }
+    }
+
+    private fun readActive(): List<CachedFavorite> = synchronized(lock) { readStored(file) }
+
+    private fun readStored(source: File): List<CachedFavorite> {
+        if (!source.isFile) return emptyList()
+        return runCatching { FavoritesCodec.decodeCached(source.readText()) }.getOrDefault(emptyList())
     }
 }
 
@@ -63,25 +98,50 @@ object FavoritesCodec {
         return array.toString()
     }
 
-    fun decode(json: String): List<MediaEntry> {
+    fun encodeCached(entries: List<CachedFavorite>): String {
+        val array = JSONArray()
+        entries.forEach { cached ->
+            val entry = cached.entry
+            array.put(
+                JSONObject()
+                    .put("id", entry.id)
+                    .put("kind", entry.kind.name)
+                    .put("name", entry.name)
+                    .put("countryCode", entry.countryCode)
+                    .put("languages", JSONArray(entry.languages))
+                    .put("geoBlocked", entry.geoBlocked)
+                    .put("streams", JSONArray(entry.streams))
+                    .put("youtube", JSONArray(entry.youtube))
+                    .put("addedAt", cached.addedAtMillis),
+            )
+        }
+        return array.toString()
+    }
+
+    fun decode(json: String): List<MediaEntry> = decodeCached(json).map { it.entry }
+
+    fun decodeCached(json: String): List<CachedFavorite> {
         if (json.isBlank()) return emptyList()
         val array = JSONArray(json)
-        val entries = ArrayList<MediaEntry>(array.length())
+        val entries = ArrayList<CachedFavorite>(array.length())
         for (index in 0 until array.length()) {
             val item = array.optJSONObject(index) ?: continue
             val kind = runCatching { ContentKind.valueOf(item.optString("kind")) }.getOrNull() ?: continue
             val id = item.optString("id")
             val name = item.optString("name")
             if (id.isBlank() || name.isBlank()) continue
-            entries += MediaEntry(
-                id = id,
-                kind = kind,
-                name = name,
-                countryCode = item.optString("countryCode").lowercase(),
-                languages = jsonStrings(item.optJSONArray("languages")),
-                geoBlocked = item.optBoolean("geoBlocked", false),
-                streams = jsonStrings(item.optJSONArray("streams")),
-                youtube = jsonStrings(item.optJSONArray("youtube")),
+            entries += CachedFavorite(
+                entry = MediaEntry(
+                    id = id,
+                    kind = kind,
+                    name = name,
+                    countryCode = item.optString("countryCode").lowercase(),
+                    languages = jsonStrings(item.optJSONArray("languages")),
+                    geoBlocked = item.optBoolean("geoBlocked", false),
+                    streams = jsonStrings(item.optJSONArray("streams")),
+                    youtube = jsonStrings(item.optJSONArray("youtube")),
+                ),
+                addedAtMillis = item.optLong("addedAt", 0L),
             )
         }
         return entries

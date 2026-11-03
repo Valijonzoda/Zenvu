@@ -7,10 +7,14 @@ import com.worldtv.app.domain.CatalogRepository
 import com.worldtv.app.domain.ContentKind
 import com.worldtv.app.domain.Country
 import com.worldtv.app.domain.CountrySelection
+import com.worldtv.app.domain.FavoriteResult
 import com.worldtv.app.domain.FavoritesRepository
 import com.worldtv.app.domain.MediaEntry
 import com.worldtv.app.domain.SettingsRepository
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -58,6 +62,8 @@ class CatalogViewModel(
 ) : ViewModel() {
     private val stateFlow = kotlinx.coroutines.flow.MutableStateFlow(CatalogUiState())
     val state = stateFlow
+    private val authPrompts = MutableSharedFlow<MediaEntry>(extraBufferCapacity = 1)
+    val favoriteAuthPrompt: SharedFlow<MediaEntry> = authPrompts.asSharedFlow()
 
     private var generation = 0
     private var channelJob: Job? = null
@@ -135,7 +141,11 @@ class CatalogViewModel(
     }
 
     fun toggleFavorite(entry: MediaEntry) {
-        viewModelScope.launch { favoritesRepository.toggle(entry) }
+        viewModelScope.launch {
+            if (favoritesRepository.toggle(entry) == FavoriteResult.AuthRequired) {
+                authPrompts.emit(entry)
+            }
+        }
     }
 
     private suspend fun loadKind(kind: ContentKind, force: Boolean, generation: Int) {

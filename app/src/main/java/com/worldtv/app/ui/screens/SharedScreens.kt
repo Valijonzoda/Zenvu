@@ -41,10 +41,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.worldtv.app.ui.account.AccountSettingsCard
+import com.worldtv.app.ui.account.LocalAccountModel
 import com.worldtv.app.BuildConfig
 import com.worldtv.app.R
 import com.worldtv.app.domain.ContentKind
@@ -228,6 +232,14 @@ fun FavoritesPane(
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalWt.current
+    val account = LocalAccountModel.current
+    val user by account.user.collectAsStateWithLifecycle()
+    val signedIn = user != null
+    val subtitle = when {
+        !account.accountsEnabled -> R.string.accounts_disabled
+        signedIn -> R.string.favorites_subtitle_account
+        else -> R.string.auth_required_body
+    }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 16.dp),
@@ -235,12 +247,20 @@ fun FavoritesPane(
     ) {
         item {
             Text(stringResource(R.string.nav_favorites), fontFamily = Outfit, fontWeight = FontWeight.Bold, fontSize = 30.sp, color = palette.heading, letterSpacing = (-0.6).sp)
-            Text(stringResource(R.string.favorites_subtitle), color = palette.muted, fontSize = 14.sp, fontFamily = Outfit)
+            Text(stringResource(subtitle), color = palette.muted, fontSize = 14.sp, fontFamily = FontFamily.Default)
+            if (!signedIn && account.accountsEnabled) {
+                TextButton(onClick = account::openSignIn) {
+                    Text(stringResource(R.string.account_sign_in), fontFamily = FontFamily.Default, color = palette.accent)
+                }
+                TextButton(onClick = account::openRegister) {
+                    Text(stringResource(R.string.account_sign_up), fontFamily = FontFamily.Default, color = palette.accent)
+                }
+            }
             Spacer(Modifier.height(8.dp))
         }
-        if (state.favorites.isEmpty()) {
+        if (signedIn && state.favorites.isEmpty()) {
             item { EmptyBlock(Icons.Outlined.FavoriteBorder, stringResource(R.string.empty_favorites_title) + "\n" + stringResource(R.string.empty_favorites_body)) }
-        } else {
+        } else if (signedIn) {
             items(state.favorites, key = { it.key }, contentType = { "favorite" }) { entry ->
                 ChannelCard(
                     entry = entry,
@@ -276,6 +296,7 @@ fun SettingsPane(
             .padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 16.dp),
     ) {
         Text(stringResource(R.string.nav_settings), fontFamily = Outfit, fontWeight = FontWeight.Bold, fontSize = 30.sp, color = palette.heading, letterSpacing = (-0.6).sp)
+        AccountSettingsCard(LocalAccountModel.current)
         SettingCard {
             SettingLine {
                 Text(stringResource(R.string.settings_theme), color = palette.heading, fontSize = 16.sp, fontFamily = Outfit)

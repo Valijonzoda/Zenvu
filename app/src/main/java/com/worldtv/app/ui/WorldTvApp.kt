@@ -37,10 +37,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
@@ -67,6 +69,9 @@ import com.worldtv.app.domain.ContentKind
 import com.worldtv.app.domain.MediaEntry
 import com.worldtv.app.domain.ThemeChoice
 import com.worldtv.app.domain.UserSettings
+import com.worldtv.app.ui.account.AccountHost
+import com.worldtv.app.ui.account.AccountViewModel
+import com.worldtv.app.ui.account.LocalAccountModel
 import com.worldtv.app.ui.catalog.CatalogViewModel
 import com.worldtv.app.ui.components.WorldBottomBar
 import com.worldtv.app.ui.player.FloatingPlayer
@@ -90,6 +95,9 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
     val catalogModel: CatalogViewModel = viewModel(factory = viewModelFactory {
         CatalogViewModel(container.catalog, container.favorites, container.settings)
     })
+    val accountModel: AccountViewModel = viewModel(factory = viewModelFactory {
+        AccountViewModel(container.auth, container.favorites)
+    })
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val catalog by catalogModel.state.collectAsStateWithLifecycle()
     val settings by container.settings.settings.collectAsStateWithLifecycle(
@@ -102,8 +110,13 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val activity = context as? android.app.Activity
+    DisposableEffect(activity) {
+        if (activity != null) container.attachActivity(activity)
+        onDispose { container.detachActivity(activity) }
+    }
     val cacheCleared = stringResource(R.string.cache_cleared)
     var heldLandscape by remember { mutableStateOf(false) }
+    var landscapeOrientation by remember { mutableIntStateOf(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) }
     var preferPortrait by remember { mutableStateOf(false) }
     var forceLandscape by remember { mutableStateOf(false) }
     var minimized by remember { mutableStateOf(false) }
@@ -147,26 +160,45 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
     DisposableEffect(context) {
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         var pending: Runnable? = null
+        var pendingWant: Boolean? = null
+        var stray = 0
         val listener = object : OrientationEventListener(context) {
             override fun onOrientationChanged(angle: Int) {
                 if (angle == ORIENTATION_UNKNOWN) return
                 val want = when {
-                    angle in 70..110 || angle in 250..290 -> true
-                    angle <= 20 || angle >= 340 || angle in 160..200 -> false
+                    angle in 80..100 || angle in 260..280 -> true
+                    angle <= 28 || angle >= 332 || angle in 155..205 -> false
                     else -> null
                 }
-                if (want == null || want == heldLandscape) {
+                if (want == true && !heldLandscape && !forceLandscape) {
+                    landscapeOrientation = landscapeSide(angle)
+                }
+                if (want == null) {
+                    stray += 1
+                    if (stray < 4) return
                     pending?.let(handler::removeCallbacks)
                     pending = null
+                    pendingWant = null
                     return
                 }
-                if (pending != null) return
+                stray = 0
+                if (want == heldLandscape) {
+                    pending?.let(handler::removeCallbacks)
+                    pending = null
+                    pendingWant = null
+                    return
+                }
+                if (pending != null && pendingWant == want) return
+                pending?.let(handler::removeCallbacks)
                 val job = Runnable {
                     pending = null
+                    pendingWant = null
+                    if (want) landscapeOrientation = landscapeSide(angle)
                     heldLandscape = want
                 }
                 pending = job
-                handler.postDelayed(job, 450)
+                pendingWant = want
+                handler.postDelayed(job, 1200)
             }
         }
         if (listener.canDetectOrientation()) listener.enable()
@@ -179,12 +211,12 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
         if (!heldLandscape) preferPortrait = false
         if (heldLandscape) forceLandscape = false
     }
-    DisposableEffect(playerOpen, preferPortrait, forceLandscape, heldLandscape, television, fullscreen) {
+    DisposableEffect(playerOpen, preferPortrait, forceLandscape, heldLandscape, landscapeOrientation, television, fullscreen) {
         val host = activity
         if (host != null && !television) {
             val landscapeVideo = playerOpen && !preferPortrait && (forceLandscape || heldLandscape)
             host.requestedOrientation = if (landscapeVideo) {
-                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                landscapeOrientation
             } else {
                 ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             }
@@ -196,12 +228,7 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
                 bars.show(WindowInsetsCompat.Type.systemBars())
             }
         }
-        onDispose {
-            if (host != null && !television) {
-                WindowCompat.getInsetsController(host.window, host.window.decorView)
-                    .show(WindowInsetsCompat.Type.systemBars())
-            }
-        }
+        onDispose { }
     }
 
     fun closePlayer() {
@@ -329,6 +356,7 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
     val cover = fullscreen && !inline && !inPlayer
 
     WorldTvTheme(choice = settings.theme, television = television, kind = catalog.kind) {
+    CompositionLocalProvider(LocalAccountModel provides accountModel) {
     Box(Modifier.fillMaxSize().background(LocalWt.current.bg)) {
         if (television) {
             TelevisionShell(
@@ -401,6 +429,12 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
                 onRadioStop = container.radio::stop,
             )
         }
+        AccountHost(
+            catalogModel = catalogModel,
+            accountModel = accountModel,
+            favorites = container.favorites,
+        )
+    }
     }
     }
 }
@@ -761,6 +795,13 @@ private fun RailButton(
         Text(label, style = MaterialTheme.typography.titleMedium)
     }
 }
+
+private fun landscapeSide(angle: Int): Int =
+    if (angle >= 180) {
+        ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+    } else {
+        ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+    }
 
 private data class StageRequest(
     val entry: MediaEntry,

@@ -210,13 +210,17 @@ class RadioPlaybackController(
 
     private fun publish() {
         val player = controller ?: localPlayer ?: return
-        val entry = stateFlow.value.entry
+        val previous = stateFlow.value
+        val playingNow = player.isPlaying
+        val failed = previous.error != null && !playingNow
         stateFlow.value = RadioPlaybackState(
-            entry = entry,
-            playing = player.isPlaying,
-            buffering = player.playbackState == Player.STATE_BUFFERING ||
-                (player.playbackState == Player.STATE_IDLE && player.playWhenReady),
-            error = null,
+            entry = previous.entry,
+            playing = playingNow,
+            buffering = !failed && !playingNow && (
+                player.playbackState == Player.STATE_BUFFERING ||
+                    (player.playbackState == Player.STATE_IDLE && player.playWhenReady)
+                ),
+            error = if (playingNow) null else previous.error,
         )
     }
 }

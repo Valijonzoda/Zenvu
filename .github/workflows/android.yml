@@ -86,13 +86,19 @@ jobs:
                   major, minor, patch = max(found)
               else:
                   gradle = open("app/build.gradle.kts", encoding="utf-8").read()
-                  current = re.search(r'versionName = .*?("(\d+\.\d+\.\d+)")', gradle)
-                  major, minor, patch = parse(current.group(2) if current else "1.0.0")
+                  current = re.search(r'fallbackVersionName = "(\d+\.\d+\.\d+)"', gradle)
+                  major, minor, patch = parse(current.group(1) if current else "1.0.0")
               version = fmt((major, minor, patch + 1))
 
           if not re.fullmatch(r"\d+\.\d+\.\d+", version):
               raise SystemExit(f"Version must look like 1.2.3, got {version}")
           major, minor, patch = parse(version)
+          if minor > 99 or patch > 99:
+              raise SystemExit(
+                  "minor and patch must be 0..99 so versionCode = "
+                  "major*10000+minor*100+patch stays unique and increasing. "
+                  f"Got {version}"
+              )
           code = major * 10000 + minor * 100 + patch
           release_date = datetime.now(timezone(timedelta(hours=5))).strftime("%Y-%m-%d")
           print(f"version={version}")
@@ -100,30 +106,106 @@ jobs:
           print(f"date={release_date}")
           PY
 
+      - name: Provide google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -euo pipefail
+          if [ -n "${GOOGLE_SERVICES_JSON}" ]; then
+            printf '%s' "${GOOGLE_SERVICES_JSON}" | base64 -d > app/google-services.json
+          else
+            echo "Accounts are disabled: GitHub secret GOOGLE_SERVICES_JSON is not set. The build still runs."
+          fi
+
       - name: Test
         run: ./gradlew test --stacktrace
 
-      - name: Build release APK
+      - name: Decode release keystore
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64}" ]; then
+            echo "Missing Actions secret KEYSTORE_BASE64."
+            echo "Create an upload keystore and add KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD."
+            echo "See the Release signing section of the README. The release build does not use the debug key."
+            exit 1
+          fi
+          : "${KEYSTORE_PASSWORD:?Missing Actions secret KEYSTORE_PASSWORD}"
+          : "${KEY_ALIAS:?Missing Actions secret KEY_ALIAS}"
+          : "${KEY_PASSWORD:?Missing Actions secret KEY_PASSWORD}"
+          keystore="${RUNNER_TEMP}/zenvu-release.keystore"
+          umask 077
+          printf '%s' "${KEYSTORE_BASE64}" | base64 -d > "$keystore"
+          chmod 600 "$keystore"
+          if [ ! -s "$keystore" ]; then
+            echo "KEYSTORE_BASE64 decoded to an empty file."
+            exit 1
+          fi
+          echo "KEYSTORE_FILE=${keystore}" >> "$GITHUB_ENV"
+
+      - name: Build signed release
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          code="${{ steps.version.outputs.code }}"
+          echo "versionName=${version} versionCode=${code} (major*10000+minor*100+patch)"
+          ./gradlew assembleRelease bundleRelease --stacktrace \
+            -PversionName="${version}" \
+            -PversionCode="${code}"
+          mkdir -p dist
+          apk=$(find app/build/outputs/apk/release -type f -name '*.apk' ! -name '*unsigned*' -print -quit)
+          aab=$(find app/build/outputs/bundle/release -type f -name '*.aab' -print -quit)
+          if [ -z "${apk}" ] || [ -z "${aab}" ]; then
+            echo "The signed release APK or AAB was not produced."
+            exit 1
+          fi
+          cp "$apk" "dist/Zenvu-${version}.apk"
+          cp "$aab" "dist/Zenvu-${version}.aab"
+
+      - name: Print release certificate
         if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
-          ./gradlew assembleRelease --stacktrace \
-            -PversionName="${{ steps.version.outputs.version }}" \
-            -PversionCode="${{ steps.version.outputs.code }}"
-          mkdir -p dist
-          apk=$(find app/build/outputs/apk/release -name '*.apk' ! -name '*unsigned*' | head -n 1)
-          cp "$apk" "dist/WorldTV-${{ steps.version.outputs.version }}.apk"
+          version="${{ steps.version.outputs.version }}"
+          apk="dist/Zenvu-${version}.apk"
+          aab="dist/Zenvu-${version}.aab"
+          certs=$("${ANDROID_HOME}/build-tools/37.0.0/apksigner" verify --print-certs "$apk")
+          printf '%s\n' "$certs"
+          sha=$(printf '%s\n' "$certs" | sed -n 's/.*SHA-256 digest: //p' | head -n 1)
+          if [ -z "${sha}" ]; then
+            echo "apksigner did not print a SHA-256 certificate digest."
+            exit 1
+          fi
+          echo "Release certificate SHA-256: ${sha}"
+          bundle=$(jarsigner -verify "$aab" 2>&1)
+          printf '%s\n' "$bundle"
+          if ! printf '%s\n' "$bundle" | grep -q "jar verified"; then
+            echo "The release AAB is not signed."
+            exit 1
+          fi
 
       - name: Publish GitHub release
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
-          name: World TV ${{ steps.version.outputs.version }}
+          name: Zenvu ${{ steps.version.outputs.version }}
           generate_release_notes: true
           body: |
             Release date: ${{ steps.version.outputs.date }}
-          files: dist/WorldTV-${{ steps.version.outputs.version }}.apk
+          files: |
+            dist/Zenvu-${{ steps.version.outputs.version }}.apk
+            dist/Zenvu-${{ steps.version.outputs.version }}.aab
 
       - name: Put the APK link in the README
         if: github.event_name != 'pull_request'
@@ -139,10 +221,11 @@ jobs:
           version = os.environ["VERSION"]
           release_date = os.environ["RELEASE_DATE"]
           repo = os.environ["GITHUB_REPOSITORY"]
-          url = f"https://github.com/{repo}/releases/download/v{version}/WorldTV-{version}.apk"
+          base = f"https://github.com/{repo}/releases/download/v{version}"
           block = (
               "<!-- release:start -->\n"
-              f"**APK {version}** ({release_date}): [WorldTV-{version}.apk]({url})\n"
+              f"**APK {version}** ({release_date}): [Zenvu-{version}.apk]({base}/Zenvu-{version}.apk)\n\n"
+              f"**AAB {version}** ({release_date}): [Zenvu-{version}.aab]({base}/Zenvu-{version}.aab)\n"
               "<!-- release:end -->"
           )
           path = Path("README.md")
@@ -163,3 +246,10 @@ jobs:
           git add README.md
           git commit -m "Link APK v${VERSION} (${RELEASE_DATE}) [skip ci]"
           git push
+
+      - name: Remove release keystore
+        if: always() && github.event_name != 'pull_request'
+        run: |
+          if [ -n "${KEYSTORE_FILE:-}" ]; then
+            rm -f "$KEYSTORE_FILE"
+          fi

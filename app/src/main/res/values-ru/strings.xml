@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="account_title">Аккаунт</string>
+    <string name="account_signed_out">Войдите, чтобы сохранять избранное.</string>
+    <string name="account_signed_in">Вы вошли</string>
+    <string name="account_sign_in">Войти</string>
+    <string name="account_sign_up">Создать аккаунт</string>
+    <string name="account_sign_out">Выйти</string>
+    <string name="account_delete">Удалить аккаунт</string>
+    <string name="account_delete_title">Удалить аккаунт?</string>
+    <string name="account_delete_body">Аккаунт и избранное в нём будут удалены. Это нельзя отменить.</string>
+    <string name="account_delete_confirm">Удалить</string>
+    <string name="account_not_now">Не сейчас</string>
+    <string name="account_deletion_page">Страница удаления данных</string>
+    <string name="accounts_disabled">В этой сборке аккаунты выключены.</string>
+    <string name="auth_required_body">Войдите или создайте аккаунт, чтобы сохранять избранное</string>
+    <string name="auth_email">Email</string>
+    <string name="auth_password">Пароль</string>
+    <string name="auth_google">Войти через Google</string>
+    <string name="auth_forgot">Забыли пароль?</string>
+    <string name="auth_switch_register">Создать аккаунт</string>
+    <string name="auth_switch_sign_in">Уже есть аккаунт? Войти</string>
+    <string name="auth_reset_sent">Письмо для сброса пароля отправлено.</string>
+    <string name="auth_error_email">Введите корректный email.</string>
+    <string name="auth_error_password">Неверный пароль.</string>
+    <string name="auth_error_in_use">Этот email уже занят.</string>
+    <string name="auth_error_weak">Пароль должен быть не короче 8 символов.</string>
+    <string name="auth_error_missing">Нет аккаунта с этим email.</string>
+    <string name="auth_error_network">Нет сети.</string>
+    <string name="auth_error_recent">Введите пароль, чтобы подтвердить, что это вы.</string>
+    <string name="auth_error_unknown">Не получилось. Попробуйте ещё раз.</string>
+    <string name="migration_title">Добавить сохранённые каналы?</string>
+    <string name="migration_body">На этом устройстве уже есть избранное. Добавить его в аккаунт без повторов?</string>
+    <string name="migration_add">Добавить</string>
+    <string name="favorites_subtitle_account">Сохранено в аккаунте</string>
+</resources>

@@ -12,15 +12,15 @@ Browse live TV, radio, and webcams from public listings.
 
 Zenvu is an independent directory for phones, Android TV, and Google TV. Switch between TV, radio, and webcams, search by name, and filter by country and language.
 
-The catalog is downloaded from the public Famelack dataset. Zenvu does not host the video or audio, does not require an account, and does not claim that third-party channels or streams are officially licensed. Some listings only work in certain regions, and some webcam sources are embedded players that may refuse to play inside an app.
+The catalog is downloaded from the public Famelack dataset. Zenvu does not host the video or audio and does not claim that third-party channels or streams are officially licensed. An account is optional and is only used to save favorites. Some listings only work in certain regions, and some webcam sources are embedded players that may refuse to play inside an app.
 
-Favorites and settings stay on the device.
+Favorites are stored in the account after sign-in. Theme and the last country stay on the device.
 
 ## Data safety notes for the Play Console
 
-- Data collected by the developer: none
-- Data stored on device: favorites, settings, cached listings
-- Data sent to third parties when the user plays or refreshes: IP address and normal player requests go to GitHub, stream hosts, and YouTube embeds. The app does not add its own analytics.
+- Data collected after sign-in: email address, Firebase user id, and saved favorites. See `play/data-safety.md`.
+- Data stored on device: settings, cached listings, and a cache of account favorites while signed in
+- Data sent to third parties when the user plays or refreshes: IP address and normal player requests go to GitHub, stream hosts, and YouTube embeds. Account data is processed by Firebase. The app does not add its own analytics.
 
 ## Graphics to capture before upload
 

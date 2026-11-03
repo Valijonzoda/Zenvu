@@ -70,15 +70,16 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
@@ -118,6 +119,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 
 class PlaybackCommands {
     val playing = MutableStateFlow(false)
+    val buffering = MutableStateFlow(false)
     var toggle: () -> Unit = {}
 }
 
@@ -251,7 +253,9 @@ private fun VideoStage(
     var useEmbed by remember(entry.key) { mutableStateOf(plan is PlaybackPlan.Embed) }
     var urlIndex by remember(entry.key) { mutableIntStateOf(0) }
     var retryToken by remember(entry.key) { mutableIntStateOf(0) }
-    var buffering by remember(entry.key) { mutableStateOf(plan is PlaybackPlan.Direct) }
+    var embedReady by remember(entry.key) { mutableStateOf(false) }
+    var buffering by remember(entry.key) { mutableStateOf(plan is PlaybackPlan.Direct || plan is PlaybackPlan.Embed) }
+    var pausedByUser by remember(entry.key) { mutableStateOf(false) }
     var playing by remember(entry.key) { mutableStateOf(false) }
     var error by remember(entry.key) { mutableStateOf<String?>(null) }
     var chrome by remember(entry.key) { mutableStateOf(true) }
@@ -263,7 +267,13 @@ private fun VideoStage(
     DisposableEffect(player, useEmbed) {
         if (!useEmbed) {
             commands?.toggle = {
-                if (player.isPlaying) player.pause() else player.play()
+                if (player.isPlaying) {
+                    pausedByUser = true
+                    player.pause()
+                } else {
+                    pausedByUser = false
+                    player.play()
+                }
             }
         }
         onDispose {
@@ -278,7 +288,8 @@ private fun VideoStage(
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
-                buffering = playbackState == Player.STATE_BUFFERING
+                buffering = playbackState == Player.STATE_BUFFERING ||
+                    (playbackState == Player.STATE_IDLE && player.playWhenReady)
                 if (playbackState == Player.STATE_READY) error = null
             }
 
@@ -305,6 +316,7 @@ private fun VideoStage(
         val url = direct.urls.getOrNull(urlIndex) ?: return@LaunchedEffect
         error = null
         buffering = true
+        pausedByUser = false
         playing = false
         chrome = true
         player.setMediaItem(MediaItem.Builder().setUri(url).setMediaId(entry.key).build())
@@ -312,6 +324,10 @@ private fun VideoStage(
         player.play()
     }
     val direct = plan is PlaybackPlan.Direct && !useEmbed
+    val waiting = error == null && !pausedByUser && !playing && buffering
+    LaunchedEffect(waiting) {
+        commands?.buffering?.value = waiting
+    }
     LaunchedEffect(chrome, chromeTick, playing, error, useEmbed) {
         if (!chrome || error != null) return@LaunchedEffect
         if (direct && !playing) return@LaunchedEffect
@@ -334,7 +350,17 @@ private fun VideoStage(
                 if (embedUrl == null) {
                     Text(stringResource(R.string.unsupported_title), color = Color.White, modifier = Modifier.align(Alignment.Center).padding(20.dp))
                 } else {
-                    EmbedView(embedUrl, commands)
+                    EmbedView(
+                        embedUrl,
+                        commands,
+                        onReady = {
+                            if (!embedReady) {
+                                embedReady = true
+                                buffering = false
+                                commands?.playing?.value = true
+                            }
+                        },
+                    )
                 }
             }
             else -> {
@@ -346,6 +372,9 @@ private fun VideoStage(
                                 this.player = player
                                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                                 setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                                isClickable = false
+                                isFocusable = false
+                                setOnTouchListener { _, _ -> false }
                             }
                         },
                         update = { view ->
@@ -372,9 +401,6 @@ private fun VideoStage(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        if (!compact && buffering && error == null && direct && chrome) {
-            CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
-        }
         if (!compact && error != null) {
             Column(Modifier.align(Alignment.Center).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(stringResource(R.string.player_error_title), color = Color.White, fontFamily = Outfit, fontWeight = FontWeight.SemiBold)
@@ -390,13 +416,25 @@ private fun VideoStage(
                     TextButton(onClick = { useEmbed = true; error = null }) { Text(stringResource(R.string.try_embed)) }
                 }
             }
+        } else if (!compact && waiting) {
+            CircularProgressIndicator(
+                modifier = Modifier.align(Alignment.Center).size(48.dp),
+                color = Color.White,
+                strokeWidth = 3.dp,
+            )
         } else if (!compact && direct && chrome) {
             PlayOrb(
                 playing = playing,
                 large = false,
                 onClick = {
                     chromeTick += 1
-                    if (player.isPlaying) player.pause() else player.play()
+                    if (player.isPlaying) {
+                        pausedByUser = true
+                        player.pause()
+                    } else {
+                        pausedByUser = false
+                        player.play()
+                    }
                 },
                 modifier = Modifier.align(Alignment.Center),
             )
@@ -465,12 +503,16 @@ private fun RadioStage(
         }
     }
     LaunchedEffect(entry.key) { container.radio.play(entry) }
-    LaunchedEffect(radio.playing) { commands?.playing?.value = radio.playing }
+    LaunchedEffect(radio.playing, radio.buffering, radio.error) {
+        commands?.playing?.value = radio.playing
+        commands?.buffering?.value = radio.error == null && radio.buffering
+    }
     DisposableEffect(container) {
         commands?.toggle = container.radio::toggle
         onDispose {
             commands?.toggle = {}
             commands?.playing?.value = false
+            commands?.buffering?.value = false
         }
     }
     val granted = notificationsGranted(context) || notificationsAllowed || Build.VERSION.SDK_INT < 33
@@ -503,11 +545,14 @@ private fun RadioStage(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             StageButton(Icons.Filled.SkipPrevious, stringResource(R.string.previous), container.queue::previous)
-            PlayOrb(playing = radio.playing, large = true, onClick = container.radio::toggle)
+            if (radio.buffering && radio.error == null) {
+                Box(Modifier.size(72.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(36.dp), strokeWidth = 3.dp)
+                }
+            } else {
+                PlayOrb(playing = radio.playing, large = true, onClick = container.radio::toggle)
+            }
             StageButton(Icons.Filled.SkipNext, stringResource(R.string.next), container.queue::next)
-        }
-        if (radio.buffering) {
-            CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp))
         }
         if (radio.error != null) {
             Column(Modifier.align(Alignment.BottomCenter).padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -559,7 +604,8 @@ private fun GestureLayer(
 ) {
     Box(
         modifier.pointerInput(Unit) {
-            val threshold = 72.dp.toPx()
+            val threshold = 156.dp.toPx()
+            val arm = 64.dp.toPx()
             awaitEachGesture {
                 val down = awaitFirstDown()
                 var dragX = 0f
@@ -569,17 +615,21 @@ private fun GestureLayer(
                     val event = awaitPointerEvent()
                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
                     if (!change.pressed) {
-                        if (!dragged) onTap()
-                        else if (abs(dragY) > abs(dragX) && abs(dragY) > threshold) {
+                        val swipe = abs(dragY) > abs(dragX) * 1.8f && abs(dragY) > threshold
+                        if (swipe) {
                             if (dragY > 0f) onSwipeDown() else onSwipeUp()
+                        } else {
+                            onTap()
                         }
                         break
                     }
                     val delta = change.positionChange()
                     dragX += delta.x
                     dragY += delta.y
-                    if (abs(dragY) > viewConfiguration.touchSlop && abs(dragY) > abs(dragX)) {
+                    if (!dragged && abs(dragY) > arm && abs(dragY) > abs(dragX) * 1.8f) {
                         dragged = true
+                        change.consume()
+                    } else if (dragged) {
                         change.consume()
                     }
                 }
@@ -659,8 +709,9 @@ private fun Equalizer(playing: Boolean, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun EmbedView(url: String, commands: PlaybackCommands?) {
+private fun EmbedView(url: String, commands: PlaybackCommands?, onReady: () -> Unit = {}) {
     var webView by remember { mutableStateOf<WebView?>(null) }
+    val ready = rememberUpdatedState(onReady)
     AndroidView(
         modifier = Modifier.fillMaxSize().clipToBounds(),
         factory = { context ->
@@ -681,7 +732,11 @@ private fun EmbedView(url: String, commands: PlaybackCommands?) {
                         callback?.onCustomViewHidden()
                     }
                 }
-                webViewClient = WebViewClient()
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        ready.value()
+                    }
+                }
             }
         },
         update = { view ->
@@ -707,7 +762,6 @@ private fun EmbedView(url: String, commands: PlaybackCommands?) {
     DisposableEffect(webView, commands) {
         val view = webView
         val toggle = if (view != null && commands != null) {
-            commands.playing.value = true
             {
                 if (commands.playing.value) {
                     view.onPause()
@@ -774,9 +828,10 @@ private fun VideoFloat(
     modifier: Modifier = Modifier,
 ) {
     val playing by commands.playing.collectAsStateWithLifecycle()
+    val buffering by commands.buffering.collectAsStateWithLifecycle()
     val density = LocalDensity.current
-    var drag by remember { mutableStateOf(Offset.Zero) }
-    var moved by remember { mutableStateOf(false) }
+    val spot = remember { FloatSpot() }
+    var frame by remember { mutableIntStateOf(0) }
     val shape = RoundedCornerShape(18.dp)
     BoxWithConstraints(modifier) {
         val marginPx = with(density) { 12.dp.toPx() }
@@ -786,11 +841,14 @@ private fun VideoFloat(
         val parentH = with(density) { maxHeight.toPx() }
         val maxX = (parentW - widthPx - marginPx).coerceAtLeast(marginPx)
         val maxY = (parentH - heightPx - marginPx).coerceAtLeast(marginPx)
-        val x = if (moved) drag.x.coerceIn(marginPx, maxX) else maxX
-        val y = if (moved) drag.y.coerceIn(marginPx, maxY) else maxY
+        val placedX = if (spot.moved) spot.x.coerceIn(marginPx, maxX) else maxX
+        val placedY = if (spot.moved) spot.y.coerceIn(marginPx, maxY) else maxY
+        val windowOffset = remember(placedX, placedY, frame) {
+            IntOffset(placedX.roundToInt(), placedY.roundToInt())
+        }
         Box(
             Modifier
-                .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
+                .offset { windowOffset }
                 .width(maxWidth * 0.78f)
                 .aspectRatio(16f / 9f)
                 .shadow(18.dp, shape)
@@ -801,13 +859,16 @@ private fun VideoFloat(
             Box(
                 Modifier
                     .fillMaxSize()
+                    .graphicsLayer { }
                     .pointerInput(maxX, maxY, marginPx) {
-                        val slop = viewConfiguration.touchSlop
+                        val slop = 32.dp.toPx()
                         awaitEachGesture {
                             val down = awaitFirstDown()
                             var dragging = false
-                            var nextX = if (moved) drag.x else maxX
-                            var nextY = if (moved) drag.y else maxY
+                            var totalX = 0f
+                            var totalY = 0f
+                            var nextX = if (spot.moved) spot.x else maxX
+                            var nextY = if (spot.moved) spot.y else maxY
                             while (true) {
                                 val event = awaitPointerEvent()
                                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
@@ -816,13 +877,23 @@ private fun VideoFloat(
                                     break
                                 }
                                 val delta = change.positionChange()
-                                if (!dragging && (abs(delta.x) > slop || abs(delta.y) > slop)) dragging = true
-                                if (dragging) {
-                                    change.consume()
+                                totalX += delta.x
+                                totalY += delta.y
+                                val passedSlop = abs(totalX) > slop || abs(totalY) > slop
+                                if (!dragging && passedSlop) {
+                                    dragging = true
+                                    nextX = (nextX + totalX).coerceIn(marginPx, maxX)
+                                    nextY = (nextY + totalY).coerceIn(marginPx, maxY)
+                                } else if (dragging) {
                                     nextX = (nextX + delta.x).coerceIn(marginPx, maxX)
                                     nextY = (nextY + delta.y).coerceIn(marginPx, maxY)
-                                    drag = Offset(nextX, nextY)
-                                    moved = true
+                                }
+                                if (dragging) {
+                                    change.consume()
+                                    spot.x = nextX
+                                    spot.y = nextY
+                                    spot.moved = true
+                                    frame += 1
                                 }
                             }
                         }
@@ -835,13 +906,22 @@ private fun VideoFloat(
                 tint = Color.White,
                 modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
             )
-            FloatIcon(
-                icon = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                description = stringResource(if (playing) R.string.pause else R.string.play),
-                onClick = commands.toggle,
-                tint = Color.White,
-                modifier = Modifier.align(Alignment.BottomStart).padding(6.dp),
-            )
+            if (buffering) {
+                Box(
+                    Modifier.align(Alignment.BottomStart).padding(6.dp).size(36.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                }
+            } else {
+                FloatIcon(
+                    icon = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    description = stringResource(if (playing) R.string.pause else R.string.play),
+                    onClick = commands.toggle,
+                    tint = Color.White,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(6.dp),
+                )
+            }
             FloatIcon(
                 icon = Icons.Filled.Close,
                 description = stringResource(R.string.stop),
@@ -865,6 +945,7 @@ private fun RadioFloat(
 ) {
     val palette = LocalWt.current
     val playing by commands.playing.collectAsStateWithLifecycle()
+    val buffering by commands.buffering.collectAsStateWithLifecycle()
     val shape = RoundedCornerShape(18.dp)
     Row(
         modifier = modifier
@@ -897,12 +978,18 @@ private fun RadioFloat(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        FloatIcon(
-            icon = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-            description = stringResource(if (playing) R.string.pause else R.string.play),
-            onClick = commands.toggle,
-            scrim = false,
-        )
+        if (buffering) {
+            Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = palette.accent, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            }
+        } else {
+            FloatIcon(
+                icon = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                description = stringResource(if (playing) R.string.pause else R.string.play),
+                onClick = commands.toggle,
+                scrim = false,
+            )
+        }
         FloatIcon(Icons.Filled.Close, stringResource(R.string.stop), onClose, scrim = false)
     }
 }
@@ -927,6 +1014,12 @@ private fun FloatIcon(
     ) {
         Icon(icon, contentDescription = description, tint = tint ?: palette.heading, modifier = Modifier.size(20.dp))
     }
+}
+
+private class FloatSpot {
+    var x = Float.NaN
+    var y = Float.NaN
+    var moved = false
 }
 
 @Composable

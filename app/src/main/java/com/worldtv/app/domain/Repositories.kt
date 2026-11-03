@@ -17,9 +17,16 @@ interface CatalogRepository {
 interface FavoritesRepository {
     val favorites: Flow<List<MediaEntry>>
 
-    suspend fun toggle(entry: MediaEntry)
+    suspend fun toggle(entry: MediaEntry): FavoriteResult
+
+    suspend fun add(entry: MediaEntry): FavoriteResult
 
     suspend fun isFavorite(key: String): Boolean
+}
+
+sealed interface FavoriteResult {
+    data object Changed : FavoriteResult
+    data object AuthRequired : FavoriteResult
 }
 
 interface SettingsRepository {
