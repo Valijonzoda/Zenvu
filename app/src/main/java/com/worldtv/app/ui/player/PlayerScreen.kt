@@ -28,6 +28,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -37,6 +38,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -74,14 +76,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -106,6 +111,7 @@ import com.worldtv.app.ui.components.artIndex
 import com.worldtv.app.ui.theme.LocalWt
 import com.worldtv.app.ui.theme.Outfit
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -768,39 +774,82 @@ private fun VideoFloat(
     modifier: Modifier = Modifier,
 ) {
     val playing by commands.playing.collectAsStateWithLifecycle()
+    val density = LocalDensity.current
+    var drag by remember { mutableStateOf(Offset.Zero) }
+    var moved by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(18.dp)
-    Box(
-        modifier
-            .padding(end = 12.dp, bottom = 12.dp)
-            .fillMaxWidth(0.78f)
-            .aspectRatio(16f / 9f)
-            .shadow(18.dp, shape)
-            .clip(shape)
-            .background(Color.Black),
-    ) {
-        preview()
-        Box(Modifier.fillMaxSize().clickable(onClick = onExpand))
-        FloatIcon(
-            icon = Icons.Filled.OpenInFull,
-            description = stringResource(R.string.full_screen),
-            onClick = onExpand,
-            tint = Color.White,
-            modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
-        )
-        FloatIcon(
-            icon = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-            description = stringResource(if (playing) R.string.pause else R.string.play),
-            onClick = commands.toggle,
-            tint = Color.White,
-            modifier = Modifier.align(Alignment.BottomStart).padding(6.dp),
-        )
-        FloatIcon(
-            icon = Icons.Filled.Close,
-            description = stringResource(R.string.stop),
-            onClick = onClose,
-            tint = Color.White,
-            modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
-        )
+    BoxWithConstraints(modifier) {
+        val marginPx = with(density) { 12.dp.toPx() }
+        val widthPx = with(density) { (maxWidth * 0.78f).toPx() }
+        val heightPx = widthPx * 9f / 16f
+        val parentW = with(density) { maxWidth.toPx() }
+        val parentH = with(density) { maxHeight.toPx() }
+        val maxX = (parentW - widthPx - marginPx).coerceAtLeast(marginPx)
+        val maxY = (parentH - heightPx - marginPx).coerceAtLeast(marginPx)
+        val x = if (moved) drag.x.coerceIn(marginPx, maxX) else maxX
+        val y = if (moved) drag.y.coerceIn(marginPx, maxY) else maxY
+        Box(
+            Modifier
+                .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
+                .width(maxWidth * 0.78f)
+                .aspectRatio(16f / 9f)
+                .shadow(18.dp, shape)
+                .clip(shape)
+                .background(Color.Black),
+        ) {
+            preview()
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(maxX, maxY, marginPx) {
+                        val slop = viewConfiguration.touchSlop
+                        awaitEachGesture {
+                            val down = awaitFirstDown()
+                            var dragging = false
+                            var nextX = if (moved) drag.x else maxX
+                            var nextY = if (moved) drag.y else maxY
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) {
+                                    if (!dragging) onExpand()
+                                    break
+                                }
+                                val delta = change.positionChange()
+                                if (!dragging && (abs(delta.x) > slop || abs(delta.y) > slop)) dragging = true
+                                if (dragging) {
+                                    change.consume()
+                                    nextX = (nextX + delta.x).coerceIn(marginPx, maxX)
+                                    nextY = (nextY + delta.y).coerceIn(marginPx, maxY)
+                                    drag = Offset(nextX, nextY)
+                                    moved = true
+                                }
+                            }
+                        }
+                    },
+            )
+            FloatIcon(
+                icon = Icons.Filled.OpenInFull,
+                description = stringResource(R.string.full_screen),
+                onClick = onExpand,
+                tint = Color.White,
+                modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
+            )
+            FloatIcon(
+                icon = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                description = stringResource(if (playing) R.string.pause else R.string.play),
+                onClick = commands.toggle,
+                tint = Color.White,
+                modifier = Modifier.align(Alignment.BottomStart).padding(6.dp),
+            )
+            FloatIcon(
+                icon = Icons.Filled.Close,
+                description = stringResource(R.string.stop),
+                onClick = onClose,
+                tint = Color.White,
+                modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
+            )
+        }
     }
 }
 

@@ -493,9 +493,11 @@ private fun PhoneShell(
                     onExpand = onExpandPlayback,
                     onClose = onDismissPlayback,
                     preview = stage,
-                    modifier = Modifier.align(
-                        if (nowPlaying.kind == ContentKind.RADIO) Alignment.BottomCenter else Alignment.BottomEnd,
-                    ),
+                    modifier = if (nowPlaying.kind == ContentKind.RADIO) {
+                        Modifier.align(Alignment.BottomCenter)
+                    } else {
+                        Modifier.fillMaxSize()
+                    },
                 )
             }
         }
@@ -580,9 +582,11 @@ private fun TelevisionShell(
                     onExpand = onExpandPlayback,
                     onClose = onDismissPlayback,
                     preview = stage,
-                    modifier = Modifier.align(
-                        if (nowPlaying.kind == ContentKind.RADIO) Alignment.BottomCenter else Alignment.BottomEnd,
-                    ),
+                    modifier = if (nowPlaying.kind == ContentKind.RADIO) {
+                        Modifier.align(Alignment.BottomCenter)
+                    } else {
+                        Modifier.fillMaxSize()
+                    },
                 )
             }
             SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter).padding(Space.lg))
