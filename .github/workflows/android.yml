@@ -187,12 +187,13 @@ jobs:
             exit 1
           fi
           echo "Release certificate SHA-256: ${sha}"
-          bundle=$(jarsigner -verify "$aab" 2>&1)
-          printf '%s\n' "$bundle"
-          if ! printf '%s\n' "$bundle" | grep -q "jar verified"; then
+          bundle=$(jarsigner -verify "$aab" 2>&1) || true
+          if [[ "$bundle" != *"jar verified"* ]]; then
+            printf '%s\n' "$bundle"
             echo "The release AAB is not signed."
             exit 1
           fi
+          echo "Release AAB signature: jar verified."
 
       - name: Publish GitHub release
         if: github.event_name != 'pull_request'
