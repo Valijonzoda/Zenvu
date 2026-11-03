@@ -155,7 +155,8 @@ class CatalogViewModel(
     private suspend fun loadKind(kind: ContentKind, force: Boolean, generation: Int) {
         val countriesResult = catalog.loadCountries(kind, force)
         if (!isCurrent(generation)) return
-        val countries = countriesResult.value.orEmpty().sortedBy { it.name.lowercase() }
+        val countries = CountrySelection.withListings(countriesResult.value.orEmpty())
+            .sortedBy { it.name.lowercase() }
         val saved = settings.selectedCountries(kind)
         val selected = CountrySelection.choose(saved, countries, Locale.getDefault().country)
         if (selected != saved) settings.setSelectedCountries(kind, selected)

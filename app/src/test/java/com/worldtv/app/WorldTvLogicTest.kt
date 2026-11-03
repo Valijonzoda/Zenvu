@@ -142,6 +142,15 @@ class CatalogBehaviorTest {
     }
 
     @Test
+    fun countryWithNoListingsIsHiddenInThatMode() {
+        val radioOnly = Country("li", "Liechtenstein", "Vaduz", "Europe/Vaduz", true, 1)
+        val emptyTv = radioOnly.copy(hasChannels = false, channelCount = 0)
+        val emptyCameras = radioOnly.copy(hasChannels = false, channelCount = 0)
+        assertEquals(listOf(radioOnly), CountrySelection.withListings(listOf(radioOnly)))
+        assertTrue(CountrySelection.withListings(listOf(emptyTv, emptyCameras)).isEmpty())
+    }
+
+    @Test
     fun ukFlagUsesGbGlyph() {
         assertEquals(CountryFlags.emoji("gb"), CountryFlags.emoji("uk"))
         assertTrue(CountryFlags.emoji("us").isNotBlank())

@@ -22,6 +22,10 @@ object CatalogQuery {
 }
 
 object CountrySelection {
+    /** A country stays in a mode only when that mode has at least one listing. */
+    fun withListings(countries: List<Country>): List<Country> =
+        countries.filter { it.channelCount > 0 }
+
     fun choose(
         saved: Set<String>,
         countries: List<Country>,
