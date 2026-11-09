@@ -81,6 +81,8 @@
     <string name="live">ЭФИР</string>
     <string name="tag_live">Эфир</string>
     <string name="watch_vertical">Смотреть вертикально</string>
+    <string name="to_player">К плееру</string>
+    <string name="to_channels">К каналам</string>
     <string name="full_screen">На весь экран</string>
     <string name="exit_full_screen">Выйти из полного экрана</string>
     <string name="volume">Громкость</string>

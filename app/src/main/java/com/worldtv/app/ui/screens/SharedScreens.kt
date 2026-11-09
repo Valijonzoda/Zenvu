@@ -2,18 +2,23 @@ package com.worldtv.app.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,9 +41,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.focusGroup
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -56,6 +65,7 @@ import com.worldtv.app.R
 import com.worldtv.app.data.LocaleApplier
 import com.worldtv.app.domain.AppLanguages
 import com.worldtv.app.domain.CountrySelection
+import com.worldtv.app.domain.CatalogQuery
 import com.worldtv.app.domain.ContentKind
 import com.worldtv.app.domain.UserNotice
 import com.worldtv.app.domain.MediaEntry
@@ -87,6 +97,8 @@ fun HomePane(
     onOpenCountry: (String) -> Unit,
     onOpenChannel: (MediaEntry) -> Unit,
     onToggleFavorite: (MediaEntry) -> Unit,
+    onFavorites: (() -> Unit)? = null,
+    onSettings: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalWt.current
@@ -121,6 +133,13 @@ fun HomePane(
             }
             Spacer(Modifier.height(6.dp))
             Text(stringResource(R.string.home_subtitle), color = palette.muted, fontSize = 14.sp, fontFamily = LocalAppFont.current)
+            if (onFavorites != null && onSettings != null) {
+                Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SectionChip(stringResource(R.string.nav_favorites), onFavorites, Modifier.weight(1f))
+                    SectionChip(stringResource(R.string.nav_settings), onSettings, Modifier.weight(1f))
+                }
+            }
             Spacer(Modifier.height(18.dp))
             ModeSwitch(selected = state.kind, onSelect = onKind)
             Spacer(Modifier.height(14.dp))
@@ -213,77 +232,211 @@ fun CountryChannelsPane(
     player: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val palette = LocalWt.current
-    val country = state.countries.firstOrNull { it.code in state.selectedCodes }
-    val channels = state.visibleChannels
-    BoxWithConstraints(modifier.fillMaxSize().background(palette.bg)) {
-        val strip = playbackStripHeight(maxWidth, maxHeight)
-        Column(Modifier.fillMaxSize()) {
-            if (playingKey != null && fullscreen) {
-                Box(Modifier.fillMaxWidth().weight(1f).clipToBounds()) { player() }
-            } else {
-                if (playingKey != null) {
-                    Box(Modifier.fillMaxWidth().height(strip).clipToBounds()) { player() }
+    val channels = remember(state.channels, state.channelQuery, state.language, state.favoritesOnly, state.favoriteKeys) {
+        state.visibleChannels
+    }
+    BoxWithConstraints(modifier.fillMaxSize().background(LocalWt.current.bg)) {
+        val split = playingKey != null && !fullscreen && maxWidth > maxHeight
+        when {
+            playingKey != null && fullscreen -> {
+                Box(Modifier.fillMaxSize().focusGroup().clipToBounds()) { player() }
+            }
+            split -> {
+                Row(Modifier.fillMaxSize()) {
+                    Box(
+                        Modifier
+                            .weight(1.2f)
+                            .fillMaxHeight()
+                            .focusGroup()
+                            .clipToBounds(),
+                    ) { player() }
+                    CountryChannelBrowser(
+                        state = state,
+                        channels = channels,
+                        onBack = onBack,
+                        onQuery = onQuery,
+                        onRefresh = onRefresh,
+                        onOpen = onOpen,
+                        onToggleFavorite = onToggleFavorite,
+                        playingKey = playingKey,
+                        showJump = true,
+                        modifier = Modifier.weight(0.9f).fillMaxHeight().focusGroup(),
+                    )
                 }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = if (playingKey == null) 20.dp else 12.dp, bottom = 8.dp),
-                ) {
-                    IconTile(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), onBack)
-                    Spacer(Modifier.padding(start = 12.dp))
-                    if (country != null) {
-                        FlagBadge(country.code, width = 48.dp, height = 34.dp)
-                        Spacer(Modifier.padding(start = 12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(CountrySelection.displayName(country.code, country.name), color = palette.heading, fontFamily = LocalAppFont.current, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, maxLines = 1)
-                            val count = if (state.loadingChannels) country.channelCount else state.channels.size
-                            Text(
-                                "${kindCount(state.kind, count)} · ${country.capital}",
-                                color = palette.muted,
-                                fontSize = 14.sp,
-                                fontFamily = LocalAppFont.current,
-                                maxLines = 1,
-                            )
-                        }
+            }
+            else -> {
+                Column(Modifier.fillMaxSize()) {
+                    if (playingKey != null) {
+                        Box(Modifier.fillMaxWidth().height(playbackStripHeight(maxWidth, maxHeight)).clipToBounds()) { player() }
                     }
-                }
-                CountrySearchField(
-                    value = state.channelQuery,
-                    onValueChange = onQuery,
-                    placeholder = stringResource(R.string.search_channels),
-                    modifier = Modifier.padding(horizontal = 18.dp),
-                )
-                Spacer(Modifier.height(8.dp))
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    when {
-                        state.loadingChannels && state.channels.isEmpty() -> item { LoadingRows(card = true) }
-                        state.channelsError != null && state.channels.isEmpty() -> item {
-                            EmptyBlock(Icons.Outlined.Search, noticeText(state.channelsError, state.noticeArg))
-                            TextButton(onClick = onRefresh) { Text(stringResource(R.string.retry)) }
-                        }
-                        channels.isEmpty() && state.channelQuery.isNotBlank() -> item {
-                            EmptyBlock(Icons.Outlined.Search, stringResource(R.string.empty_search))
-                        }
-                        channels.isEmpty() -> item {
-                            EmptyBlock(Icons.Outlined.Search, stringResource(R.string.empty_country))
-                        }
-                        else -> items(channels, key = { it.key }, contentType = { "channel" }) { entry ->
-                            ChannelCard(
-                                entry = entry,
-                                favorite = entry.key in state.favoriteKeys,
-                                playing = entry.key == playingKey,
-                                onOpen = { onOpen(channels, entry) },
-                                onToggleFavorite = { onToggleFavorite(entry) },
-                            )
-                        }
-                    }
+                    CountryChannelBrowser(
+                        state = state,
+                        channels = channels,
+                        onBack = onBack,
+                        onQuery = onQuery,
+                        onRefresh = onRefresh,
+                        onOpen = onOpen,
+                        onToggleFavorite = onToggleFavorite,
+                        playingKey = playingKey,
+                        showJump = false,
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CountryChannelBrowser(
+    state: CatalogUiState,
+    channels: List<MediaEntry>,
+    onBack: () -> Unit,
+    onQuery: (String) -> Unit,
+    onRefresh: () -> Unit,
+    onOpen: (List<MediaEntry>, MediaEntry) -> Unit,
+    onToggleFavorite: (MediaEntry) -> Unit,
+    playingKey: String?,
+    showJump: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val palette = LocalWt.current
+    val country = state.countries.firstOrNull { it.code in state.selectedCodes }
+    Column(modifier) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = if (playingKey == null) 20.dp else 12.dp, bottom = 8.dp),
+        ) {
+            IconTile(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), onBack)
+            Spacer(Modifier.padding(start = 12.dp))
+            if (country != null) {
+                FlagBadge(country.code, width = 48.dp, height = 34.dp)
+                Spacer(Modifier.padding(start = 12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        CountrySelection.displayName(country.code, country.name),
+                        color = palette.heading,
+                        fontFamily = LocalAppFont.current,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 18.sp,
+                        maxLines = 1,
+                    )
+                    val count = if (state.loadingChannels) country.channelCount else state.channels.size
+                    Text(
+                        "${kindCount(state.kind, count)} · ${country.capital}",
+                        color = palette.muted,
+                        fontSize = 14.sp,
+                        fontFamily = LocalAppFont.current,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+        if (showJump) {
+            FocusJump(stringResource(R.string.to_player), FocusDirection.Left, Modifier.padding(horizontal = 18.dp))
+            Spacer(Modifier.height(8.dp))
+        }
+        CountrySearchField(
+            value = state.channelQuery,
+            onValueChange = onQuery,
+            placeholder = stringResource(R.string.search_channels),
+            modifier = Modifier.padding(horizontal = 18.dp),
+        )
+        Spacer(Modifier.height(8.dp))
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            countryChannelItems(state, channels, playingKey, onRefresh, onOpen, onToggleFavorite)
+        }
+    }
+}
+
+private fun LazyListScope.countryChannelItems(
+    state: CatalogUiState,
+    channels: List<MediaEntry>,
+    playingKey: String?,
+    onRefresh: () -> Unit,
+    onOpen: (List<MediaEntry>, MediaEntry) -> Unit,
+    onToggleFavorite: (MediaEntry) -> Unit,
+) {
+    when {
+        state.loadingChannels && state.channels.isEmpty() -> item { LoadingRows(card = true) }
+        state.channelsError != null && state.channels.isEmpty() -> item {
+            EmptyBlock(Icons.Outlined.Search, noticeText(state.channelsError, state.noticeArg))
+            TextButton(onClick = onRefresh) { Text(stringResource(R.string.retry)) }
+        }
+        channels.isEmpty() && state.channelQuery.isNotBlank() -> item {
+            EmptyBlock(Icons.Outlined.Search, stringResource(R.string.empty_search))
+        }
+        channels.isEmpty() -> item {
+            EmptyBlock(Icons.Outlined.Search, stringResource(R.string.empty_country))
+        }
+        else -> items(channels, key = { it.key }, contentType = { "channel" }) { entry ->
+            ChannelCard(
+                entry = entry,
+                favorite = entry.key in state.favoriteKeys,
+                playing = entry.key == playingKey,
+                onOpen = { onOpen(channels, entry) },
+                onToggleFavorite = { onToggleFavorite(entry) },
+            )
+        }
+    }
+}
+
+@Composable
+internal fun FocusJump(label: String, direction: FocusDirection, modifier: Modifier = Modifier) {
+    val palette = LocalWt.current
+    val focusManager = LocalFocusManager.current
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .clip(shape)
+            .background(if (focused) palette.accent else palette.soft)
+            .border(if (focused) 4.dp else 0.dp, Color.White, shape)
+            .clickable(interactionSource = interaction, indication = null) {
+                focusManager.moveFocus(direction)
+            }
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            color = if (focused) Color.White else palette.heading,
+            fontFamily = LocalAppFont.current,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 16.sp,
+        )
+    }
+}
+
+@Composable
+private fun SectionChip(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val palette = LocalWt.current
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val shape = RoundedCornerShape(16.dp)
+    Box(
+        modifier = modifier
+            .height(48.dp)
+            .clip(shape)
+            .background(if (focused) palette.accent else palette.surface)
+            .border(if (focused) 4.dp else 0.dp, palette.accent, shape)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = if (focused) Color.White else palette.heading,
+            fontFamily = LocalAppFont.current,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 15.sp,
+        )
     }
 }
 

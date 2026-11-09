@@ -6,6 +6,8 @@ import com.worldtv.app.domain.ContentKind
 import com.worldtv.app.domain.Country
 import com.worldtv.app.domain.MediaEntry
 import com.worldtv.app.domain.UserNotice
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class CatalogRepositoryImpl(
     private val client: DatasetClient,
@@ -71,7 +73,7 @@ class CatalogRepositoryImpl(
         }
         return try {
             val body = client.fetchText(path)
-            val parsed = parse(body)
+            val parsed = withContext(Dispatchers.Default) { parse(body) }
             cache.write(path, body)
             CatalogResult(parsed, fromCache = false, offline = false, errorMessage = null)
         } catch (error: Exception) {
@@ -92,7 +94,7 @@ class CatalogRepositoryImpl(
         }
     }
 
-    private fun <T> readCached(
+    private suspend fun <T> readCached(
         path: String,
         offline: Boolean,
         parse: (String) -> T,
@@ -109,7 +111,8 @@ class CatalogRepositoryImpl(
             notice = if (offline) UserNotice.OFFLINE_UNSAVED else UserNotice.NO_SAVED_COPY,
         )
         return try {
-            CatalogResult(parse(cached.body), fromCache = true, offline = offline, errorMessage = null)
+            val parsed = withContext(Dispatchers.Default) { parse(cached.body) }
+            CatalogResult(parsed, fromCache = true, offline = offline, errorMessage = null)
         } catch (error: Exception) {
             CatalogResult(
                 value = null,

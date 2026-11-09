@@ -282,7 +282,10 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
     }
 
     fun goLandscape() {
-        if (television) return
+        if (television) {
+            tvFullscreen = true
+            return
+        }
         if (fullscreen) return
         minimized = false
         preferPortrait = false
@@ -295,7 +298,10 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
     }
 
     fun toggleOrientation() {
-        if (television) return
+        if (television) {
+            tvFullscreen = !tvFullscreen
+            return
+        }
         if (fullscreen) {
             preferPortrait = true
             forceLandscape = false
@@ -321,6 +327,7 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
 
     BackHandler {
         when {
+            television && tvFullscreen -> tvFullscreen = false
             television && playerOpen -> dismissPlayback()
             fullscreen && !television -> {
                 preferPortrait = true
@@ -444,7 +451,7 @@ private fun PhoneShell(
     television: Boolean,
 ) {
     val screen = navigator.current
-    val showBar = !fullscreen && screen != AppScreen.Player
+    val showBar = !television && !fullscreen && screen != AppScreen.Player
     Scaffold(
         containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
@@ -481,6 +488,8 @@ private fun PhoneShell(
                 onToggleOrientation = onToggleOrientation,
                 onBack = navigator::back,
                 onCountries = onShowCountries,
+                onFavorites = { navigator.openSection(AppScreen.Favorites) },
+                onSettings = { navigator.openSection(AppScreen.Settings) },
                 onPrivacy = navigator::openPrivacy,
                 embedPlayback = embedPlayback,
                 stage = if (floating || cover) {
@@ -530,6 +539,8 @@ private fun ScreenBody(
     onToggleOrientation: () -> Unit,
     onBack: () -> Unit,
     onCountries: () -> Unit,
+    onFavorites: () -> Unit,
+    onSettings: () -> Unit,
     onPrivacy: () -> Unit,
     embedPlayback: Boolean,
     stage: @Composable () -> Unit,
@@ -552,6 +563,8 @@ private fun ScreenBody(
                 onCountries()
             },
             onToggleFavorite = catalogModel::toggleFavorite,
+            onFavorites = if (television) onFavorites else null,
+            onSettings = if (television) onSettings else null,
         )
         AppScreen.Countries -> CountryChannelsPane(
             state = catalog,

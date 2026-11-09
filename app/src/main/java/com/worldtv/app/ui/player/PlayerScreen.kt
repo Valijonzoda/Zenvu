@@ -54,7 +54,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.OpenInFull
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -79,6 +81,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.focusGroup
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -109,6 +114,7 @@ import com.worldtv.app.domain.PlaybackPlan
 import com.worldtv.app.domain.PlaybackPlanner
 import com.worldtv.app.playback.buildPlayer
 import com.worldtv.app.ui.components.ChannelCard
+import com.worldtv.app.ui.screens.FocusJump
 import com.worldtv.app.ui.screens.playbackStripHeight
 import com.worldtv.app.ui.components.artBrush
 import com.worldtv.app.ui.components.artIndex
@@ -153,31 +159,58 @@ fun PlayerScreen(
     }
     val palette = LocalWt.current
     val cover = fullscreen && !television
-    BoxWithConstraints(Modifier.fillMaxSize().background(if (cover) Color.Black else palette.bg)) {
-        val strip = playbackStripHeight(maxWidth, maxHeight)
-        Column(Modifier.fillMaxSize()) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .then(if (cover) Modifier.weight(1f) else Modifier.height(strip)),
-            ) {
-                stage()
+    BoxWithConstraints(Modifier.fillMaxSize().background(if (cover || (fullscreen && television)) Color.Black else palette.bg)) {
+        val split = !cover && !fullscreen && maxWidth > maxHeight
+        when {
+            cover || fullscreen -> {
+                Box(Modifier.fillMaxSize().focusGroup()) { stage() }
             }
-            if (!cover) {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(channels, key = { it.key }, contentType = { "channel" }) { item ->
-                        ChannelCard(
-                            entry = item,
-                            favorite = item.key in favoriteKeys,
-                            playing = item.key == entry.key,
-                            favoriteTags = true,
-                            onOpen = { onSelect(item) },
-                            onToggleFavorite = { onToggleFavorite(item) },
+            split -> {
+                Row(Modifier.fillMaxSize()) {
+                    Box(Modifier.weight(1.2f).fillMaxHeight().focusGroup()) { stage() }
+                    Column(Modifier.weight(0.9f).fillMaxHeight().focusGroup()) {
+                        FocusJump(
+                            stringResource(R.string.to_player),
+                            FocusDirection.Left,
+                            Modifier.padding(start = 18.dp, end = 18.dp, top = 12.dp),
                         )
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 8.dp, bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(channels, key = { it.key }, contentType = { "channel" }) { item ->
+                                ChannelCard(
+                                    entry = item,
+                                    favorite = item.key in favoriteKeys,
+                                    playing = item.key == entry.key,
+                                    favoriteTags = true,
+                                    onOpen = { onSelect(item) },
+                                    onToggleFavorite = { onToggleFavorite(item) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            else -> {
+                Column(Modifier.fillMaxSize()) {
+                    Box(Modifier.fillMaxWidth().height(playbackStripHeight(maxWidth, maxHeight))) { stage() }
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(channels, key = { it.key }, contentType = { "channel" }) { item ->
+                            ChannelCard(
+                                entry = item,
+                                favorite = item.key in favoriteKeys,
+                                playing = item.key == entry.key,
+                                favoriteTags = true,
+                                onOpen = { onSelect(item) },
+                                onToggleFavorite = { onToggleFavorite(item) },
+                            )
+                        }
                     }
                 }
             }
@@ -214,6 +247,7 @@ fun PlaybackStage(
             onToggleFavorite = onToggleFavorite,
             onBack = onBack,
             onClose = onClose,
+            onToggleOrientation = onToggleOrientation,
             television = television,
             onSwipeDown = onSwipeDown,
             onSwipeUp = onSwipeUp,
@@ -264,6 +298,7 @@ private fun VideoStage(
 ) {
     val palette = LocalWt.current
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     val plan = remember(entry.key) { PlaybackPlanner.plan(entry) }
     var useEmbed by remember(entry.key) { mutableStateOf(plan is PlaybackPlan.Embed) }
     var urlIndex by remember(entry.key) { mutableIntStateOf(0) }
@@ -487,6 +522,22 @@ private fun VideoStage(
                         onToggleFavorite,
                         tint = if (favorite) palette.fav else Color(0xFF3A4673),
                     )
+                    if (television) {
+                        Spacer(Modifier.width(8.dp))
+                        StageButton(
+                            if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.OpenInFull,
+                            stringResource(if (fullscreen) R.string.exit_full_screen else R.string.full_screen),
+                            onToggleOrientation,
+                        )
+                    }
+                    if (television && !fullscreen) {
+                        Spacer(Modifier.width(8.dp))
+                        StageButton(
+                            Icons.AutoMirrored.Filled.ArrowForward,
+                            stringResource(R.string.to_channels),
+                            { focusManager.moveFocus(FocusDirection.Right) },
+                        )
+                    }
                 }
             }
             if (!television) {
@@ -514,6 +565,7 @@ private fun RadioStage(
     onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
     onClose: () -> Unit,
+    onToggleOrientation: () -> Unit,
     television: Boolean,
     onSwipeDown: () -> Unit,
     onSwipeUp: () -> Unit,
@@ -522,6 +574,7 @@ private fun RadioStage(
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalWt.current
+    val focusManager = LocalFocusManager.current
     val radio by container.radio.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var notificationsAllowed by remember { mutableStateOf(notificationsGranted(context)) }
@@ -603,6 +656,25 @@ private fun RadioStage(
                 if (television) onClose else onBack,
                 modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
             )
+            Row(
+                modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (television) {
+                    StageButton(
+                        if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.OpenInFull,
+                        stringResource(if (fullscreen) R.string.exit_full_screen else R.string.full_screen),
+                        onToggleOrientation,
+                    )
+                }
+                if (television && !fullscreen) {
+                    StageButton(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        stringResource(R.string.to_channels),
+                        { focusManager.moveFocus(FocusDirection.Right) },
+                    )
+                }
+            }
         }
         if (favorite) {
             Icon(
@@ -711,13 +783,13 @@ private fun StageButton(
     Box(
         modifier
             .size(48.dp)
-            .border(if (focused) 3.dp else 0.dp, Color.White, CircleShape)
+            .border(if (focused) 4.dp else 0.dp, Color.White, CircleShape)
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.92f))
+            .background(if (focused) Color(0xFF3D7EFF) else Color.White.copy(alpha = 0.92f))
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = description, tint = if (focused) Color.White else tint, modifier = Modifier.size(22.dp))
     }
 }
 

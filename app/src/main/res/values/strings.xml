@@ -83,6 +83,8 @@
     <string name="watch_vertical">Watch vertically</string>
     <string name="full_screen">Full screen</string>
     <string name="exit_full_screen">Exit full screen</string>
+    <string name="to_player">To player</string>
+    <string name="to_channels">To channels</string>
     <string name="volume">Volume</string>
     <string name="settings_version_body">Version %1$s · Independent directory, streams belong to their owners</string>
     <string name="clear_cache_hint">Listings stay available offline</string>

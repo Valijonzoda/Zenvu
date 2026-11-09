@@ -12,8 +12,10 @@ import com.worldtv.app.domain.FavoritesRepository
 import com.worldtv.app.domain.MediaEntry
 import com.worldtv.app.domain.SettingsRepository
 import com.worldtv.app.domain.UserNotice
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
@@ -42,6 +44,7 @@ data class CatalogUiState(
     val catalogKind: ContentKind? = null,
     val loadingCatalog: Boolean = false,
     val catalogError: UserNotice? = null,
+    val searchHits: List<MediaEntry> = emptyList(),
 ) {
     val visibleCountries: List<Country>
         get() = countries.filter { CountrySelection.matches(it, countryQuery) }
@@ -56,9 +59,6 @@ data class CatalogUiState(
 
     val visibleChannels: List<MediaEntry>
         get() = CatalogQuery.filter(channels, channelQuery, language, favoritesOnly, favoriteKeys)
-
-    val searchHits: List<MediaEntry>
-        get() = CatalogQuery.search(catalogChannels, countryQuery)
 
     fun countryName(code: String): String {
         val fallback = countries.firstOrNull { it.code.equals(code, ignoreCase = true) }?.name ?: code.uppercase()
@@ -79,6 +79,7 @@ class CatalogViewModel(
     private var generation = 0
     private var channelJob: Job? = null
     private var catalogJob: Job? = null
+    private var searchJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -97,6 +98,7 @@ class CatalogViewModel(
         if (stateFlow.value.kind == kind) return
         channelJob?.cancel()
         catalogJob?.cancel()
+        searchJob?.cancel()
         val generation = nextGeneration()
         val query = stateFlow.value.countryQuery
         stateFlow.value = stateFlow.value.copy(
@@ -115,6 +117,7 @@ class CatalogViewModel(
             catalogKind = null,
             loadingCatalog = false,
             catalogError = null,
+            searchHits = emptyList(),
         )
         viewModelScope.launch { loadKind(kind, force = false, generation = generation) }
         if (query.trim().length >= 2) ensureCatalog(kind)
@@ -125,8 +128,10 @@ class CatalogViewModel(
     }
 
     fun setCountryQuery(query: String) {
-        stateFlow.value = stateFlow.value.copy(countryQuery = query)
-        if (query.trim().length >= 2) ensureCatalog(stateFlow.value.kind)
+        val current = stateFlow.value
+        stateFlow.value = current.copy(countryQuery = query)
+        if (query.trim().length >= 2) ensureCatalog(current.kind)
+        publishSearch(current.catalogChannels, query, current.kind)
     }
 
     fun setLanguage(language: String?) {
@@ -239,12 +244,28 @@ class CatalogViewModel(
             val result = catalog.loadAllChannels(kind, force)
             if (stateFlow.value.kind != kind) return@launch
             val channels = result.value
+            val loaded = channels ?: stateFlow.value.catalogChannels
+            val query = stateFlow.value.countryQuery
+            val hits = withContext(Dispatchers.Default) { CatalogQuery.search(loaded, query) }
+            if (stateFlow.value.kind != kind || stateFlow.value.countryQuery != query) return@launch
             stateFlow.value = stateFlow.value.copy(
                 catalogKind = kind,
-                catalogChannels = channels ?: stateFlow.value.catalogChannels,
+                catalogChannels = loaded,
                 loadingCatalog = false,
                 catalogError = if (channels == null) result.notice else null,
+                searchHits = hits,
             )
+        }
+    }
+
+    private fun publishSearch(entries: List<MediaEntry>, query: String, kind: ContentKind) {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            val hits = withContext(Dispatchers.Default) { CatalogQuery.search(entries, query) }
+            val current = stateFlow.value
+            if (current.kind == kind && current.countryQuery == query) {
+                stateFlow.value = current.copy(searchHits = hits)
+            }
         }
     }
 

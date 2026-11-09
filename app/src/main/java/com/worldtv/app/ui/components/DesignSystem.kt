@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalance
@@ -44,10 +45,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -55,6 +62,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -167,8 +175,14 @@ fun ModeSwitch(
                             Modifier
                         },
                     )
-                    .background(if (active) Brush.linearGradient(listOf(palette.accentFrom, palette.accent)) else Brush.linearGradient(listOf(Color.Transparent, Color.Transparent)))
-                    .border(if (focused) 3.dp else 0.dp, palette.accent, itemShape)
+                    .background(
+                        when {
+                            active -> Brush.linearGradient(listOf(palette.accentFrom, palette.accent))
+                            focused -> Brush.linearGradient(listOf(palette.accent.copy(alpha = 0.55f), palette.accent.copy(alpha = 0.55f)))
+                            else -> Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
+                        },
+                    )
+                    .border(if (focused) 4.dp else 0.dp, if (active) Color.White else palette.accent, itemShape)
                     .clickable(interactionSource = interaction, indication = null) { onSelect(kind) }
                     .padding(top = 12.dp, bottom = 10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -177,12 +191,12 @@ fun ModeSwitch(
                 Icon(
                     kind.glyph(),
                     contentDescription = null,
-                    tint = if (active) Color.White else palette.muted,
+                    tint = if (active || focused) Color.White else palette.muted,
                     modifier = Modifier.size(22.dp),
                 )
                 Text(
                     stringResource(kind.labelRes()),
-                    color = if (active) Color.White else palette.muted,
+                    color = if (active || focused) Color.White else palette.muted,
                     fontFamily = LocalAppFont.current,
                     fontWeight = FontWeight.Medium,
                     fontSize = 13.sp,
@@ -201,27 +215,74 @@ fun CountrySearchField(
 ) {
     val palette = LocalWt.current
     val shape = RoundedCornerShape(18.dp)
-    val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
+    val keyboard = LocalSoftwareKeyboardController.current
+    val shellFocus = remember { FocusRequester() }
+    val fieldFocus = remember { FocusRequester() }
+    var editing by remember { mutableStateOf(false) }
+    var fieldFocused by remember { mutableStateOf(false) }
+    BackHandler(enabled = editing) {
+        keyboard?.hide()
+        editing = false
+    }
+    LaunchedEffect(editing) {
+        if (!editing) return@LaunchedEffect
+        runCatching { fieldFocus.requestFocus() }
+        keyboard?.show()
+    }
+    if (!editing) {
+        val interaction = remember { MutableInteractionSource() }
+        val focused by interaction.collectIsFocusedAsState()
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .wtShadow(shape, dark = palette.dark)
+                .clip(shape)
+                .background(if (focused) palette.accent.copy(alpha = 0.22f) else palette.surface)
+                .border(if (focused) 4.dp else 0.dp, palette.accent, shape)
+                .focusRequester(shellFocus)
+                .clickable(interactionSource = interaction, indication = null) { editing = true }
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Outlined.Search, contentDescription = null, tint = if (focused) palette.accent else palette.muted, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = value.ifEmpty { placeholder },
+                color = if (value.isEmpty()) palette.muted else palette.heading,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+            )
+        }
+        return
+    }
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier
             .fillMaxWidth()
+            .focusRequester(fieldFocus)
+            .onFocusChanged { state ->
+                if (state.isFocused) {
+                    fieldFocused = true
+                } else if (fieldFocused) {
+                    keyboard?.hide()
+                    editing = false
+                }
+            }
             .wtShadow(shape, dark = palette.dark)
-            .then(if (focused) Modifier.border(2.dp, palette.accent, shape) else Modifier)
+            .border(4.dp, palette.accent, shape)
             .height(52.dp)
             .clip(shape)
             .background(palette.surface),
         textStyle = MaterialTheme.typography.bodyLarge.copy(color = palette.heading),
         singleLine = true,
-        interactionSource = interaction,
         decorationBox = { inner ->
             Row(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Outlined.Search, contentDescription = null, tint = palette.muted, modifier = Modifier.size(22.dp))
+                Icon(Icons.Outlined.Search, contentDescription = null, tint = palette.accent, modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(10.dp))
                 Box(Modifier.weight(1f)) {
                     if (value.isEmpty()) {
@@ -252,8 +313,8 @@ fun CountryRow(
             .pressScale(interaction)
             .wtShadow(shape, elevation = 2.dp, dark = palette.dark)
             .clip(shape)
-            .background(palette.surface)
-            .border(if (focused) 3.dp else 0.dp, palette.accent, shape)
+            .background(if (focused) lerp(palette.surface, palette.accent, 0.45f) else palette.surface)
+            .border(if (focused) 4.dp else 0.dp, palette.accent, shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -308,6 +369,7 @@ fun ChannelCard(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val cardColor = when {
+        focused -> lerp(palette.surface, palette.accent, 0.5f)
         !playing -> palette.surface
         palette.dark -> lerp(palette.surface, palette.accent, 0.32f)
         else -> palette.soft
@@ -318,7 +380,7 @@ fun ChannelCard(
             .pressScale(interaction)
             .clip(shape)
             .background(cardColor)
-            .border(if (focused || playing) 2.dp else 0.dp, if (playing || focused) palette.accent else Color.Transparent, shape)
+            .border(if (focused) 4.dp else if (playing) 2.dp else 0.dp, if (playing || focused) palette.accent else Color.Transparent, shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onOpen)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -437,12 +499,12 @@ fun IconTile(
             .size(44.dp)
             .wtShadow(shape, dark = palette.dark)
             .clip(shape)
-            .background(palette.surface)
-            .border(if (focused) 3.dp else 0.dp, palette.accent, shape)
+            .background(if (focused) palette.accent else palette.surface)
+            .border(if (focused) 4.dp else 0.dp, Color.White, shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = description, tint = tint ?: palette.heading, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = description, tint = if (focused) Color.White else tint ?: palette.heading, modifier = Modifier.size(22.dp))
     }
 }
 
@@ -537,7 +599,8 @@ private fun NavItem(
     val focused by interaction.collectIsFocusedAsState()
     Column(
         modifier = modifier
-            .border(if (focused) 3.dp else 0.dp, palette.accent, RoundedCornerShape(16.dp))
+            .background(if (focused) palette.accent.copy(alpha = 0.2f) else Color.Transparent, RoundedCornerShape(16.dp))
+            .border(if (focused) 4.dp else 0.dp, palette.accent, RoundedCornerShape(16.dp))
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
