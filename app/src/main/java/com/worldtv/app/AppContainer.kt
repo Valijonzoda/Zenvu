@@ -35,11 +35,16 @@ class AppContainer(context: Context) {
     private val wiring = createWiring()
     private val favoriteCache = FileFavoriteCache(File(appContext.filesDir, "favorites.json"))
 
-    val catalog: CatalogRepository = CatalogRepositoryImpl(
-        client = OkHttpDatasetClient(baseUrl = BuildConfig.DATASET_BASE),
-        cache = FileTextCache(File(appContext.filesDir, "catalog-cache")),
-        online = AndroidNetworkStatus(appContext),
-    )
+    val catalog: CatalogRepository
+
+    init {
+        File(appContext.filesDir, "catalog-cache").deleteRecursively()
+        catalog = CatalogRepositoryImpl(
+            client = OkHttpDatasetClient(baseUrl = BuildConfig.DATASET_BASE),
+            cache = FileTextCache(File(appContext.filesDir, FileTextCache.DIRECTORY)),
+            online = AndroidNetworkStatus(appContext),
+        )
+    }
     val auth: AuthRepository = wiring.auth
     val favorites: AccountFavoritesRepository = AccountFavoritesRepository(
         local = favoriteCache,

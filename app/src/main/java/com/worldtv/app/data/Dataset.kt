@@ -15,11 +15,11 @@ class DatasetException(
 ) : Exception(message, cause)
 
 /**
- * Paths verified from https://github.com/Valijonzoda/famelack-data
+ * Paths verified from https://github.com/famelack/famelack-data
  * Raw JSON is used. The compressed copies are gzip payloads with a .json name.
  */
 object DatasetPaths {
-    const val BASE = "https://raw.githubusercontent.com/Valijonzoda/famelack-data/main/"
+    const val BASE = "https://raw.githubusercontent.com/famelack/famelack-data/main/"
 
     fun countriesMetadata(kind: ContentKind): String =
         "${kind.directory}/raw/countries_metadata.json"

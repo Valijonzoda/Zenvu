@@ -52,7 +52,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
         val datasetBase = (project.findProperty("datasetBase") as String?)
-            ?: "https://raw.githubusercontent.com/Valijonzoda/famelack-data/main/"
+            ?: "https://raw.githubusercontent.com/famelack/famelack-data/main/"
         buildConfigField("String", "DATASET_BASE", "\"$datasetBase\"")
         buildConfigField("boolean", "ACCOUNTS_ENABLED", accountsEnabled.toString())
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${googleWebClientId.replace("\\", "\\\\").replace("\"", "\\\"")}\"")

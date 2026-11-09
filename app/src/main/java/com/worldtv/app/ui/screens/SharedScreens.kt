@@ -1,6 +1,5 @@
 package com.worldtv.app.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -67,8 +66,6 @@ import com.worldtv.app.ui.account.AccountSettingsCard
 import com.worldtv.app.ui.account.LocalAccountModel
 import com.worldtv.app.BuildConfig
 import com.worldtv.app.R
-import com.worldtv.app.data.LocaleApplier
-import com.worldtv.app.domain.AppLanguages
 import com.worldtv.app.domain.CountrySelection
 import com.worldtv.app.domain.CatalogQuery
 import com.worldtv.app.domain.ContentKind
@@ -77,8 +74,6 @@ import com.worldtv.app.domain.MediaEntry
 import com.worldtv.app.domain.ThemeChoice
 import com.worldtv.app.domain.UserSettings
 import com.worldtv.app.ui.catalog.CatalogUiState
-import com.worldtv.app.ui.language.LanguagePicker
-import com.worldtv.app.ui.language.applyAppLanguage
 import com.worldtv.app.ui.components.focusAlpha
 import com.worldtv.app.ui.components.ChannelCard
 import com.worldtv.app.ui.components.CountryRow
@@ -119,6 +114,9 @@ fun HomePane(
     val query = state.countryQuery.trim()
     val showChannels = query.length >= 2
     val channelHits = state.searchHits
+    val countryNames = remember(state.countries) {
+        state.countries.associate { it.code.lowercase() to CountrySelection.displayName(it.code, it.name) }
+    }
     val countries = remember(state.countries, query) {
         val filtered = if (query.isEmpty()) state.countries else state.countries.filter { CountrySelection.matches(it, query) }
         filtered.sortedBy { CountrySelection.displayName(it.code, it.name).lowercase() }
@@ -204,7 +202,7 @@ fun HomePane(
             countries.isEmpty() && !showChannels -> item {
                 EmptyBlock(Icons.Outlined.Search, stringResource(R.string.empty_country_search))
             }
-            countries.isNotEmpty() -> items(countries, key = { it.code }) { country ->
+            countries.isNotEmpty() -> items(countries, key = { it.code }, contentType = { "country" }) { country ->
                 val restore = country.code.equals(pendingCode, ignoreCase = true)
                 val requester = remember { FocusRequester() }
                 if (restore) {
@@ -253,7 +251,7 @@ fun HomePane(
                     ChannelCard(
                         entry = entry,
                         favorite = entry.key in state.favoriteKeys,
-                        subtitle = state.countryName(entry.countryCode),
+                        subtitle = countryNames[entry.countryCode] ?: entry.countryCode.uppercase(),
                         onOpen = { onOpenChannel(entry) },
                         onToggleFavorite = { onToggleFavorite(entry) },
                     )
@@ -630,6 +628,9 @@ fun AllChannelsPane(
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalWt.current
+    val countryNames = remember(state.countries) {
+        state.countries.associate { it.code.lowercase() to CountrySelection.displayName(it.code, it.name) }
+    }
     val shown = if (state.allQuery.isBlank()) state.catalogChannels else state.allHits
     LaunchedEffect(state.kind) { onRefresh() }
     LazyColumn(
@@ -657,7 +658,7 @@ fun AllChannelsPane(
                 ChannelCard(
                     entry = entry,
                     favorite = entry.key in state.favoriteKeys,
-                    subtitle = state.countryName(entry.countryCode),
+                    subtitle = countryNames[entry.countryCode] ?: entry.countryCode.uppercase(),
                     onOpen = { onOpen(entry) },
                     onToggleFavorite = { onToggleFavorite(entry) },
                 )
@@ -679,15 +680,6 @@ fun SettingsPane(
     val palette = LocalWt.current
     val context = LocalContext.current
     var confirmClear by remember { mutableStateOf(false) }
-    var choosingLanguage by remember { mutableStateOf(false) }
-    if (choosingLanguage) {
-        BackHandler { choosingLanguage = false }
-        LanguagePicker { tag ->
-            choosingLanguage = false
-            applyAppLanguage(context, tag)
-        }
-        return
-    }
     var cacheToken by remember { mutableIntStateOf(0) }
     val cacheLabel = remember(cacheToken) { cacheSizeLabel(context) }
     Column(
@@ -697,19 +689,6 @@ fun SettingsPane(
             .padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 16.dp),
     ) {
         Text(stringResource(R.string.nav_settings), fontFamily = LocalAppFont.current, fontWeight = FontWeight.Bold, fontSize = 30.sp, color = palette.heading, letterSpacing = (-0.6).sp)
-        SettingCard {
-            SettingLine(showDivider = false, onClick = { choosingLanguage = true }) {
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.settings_language), color = palette.heading, fontSize = 16.sp, fontFamily = LocalAppFont.current)
-                    Text(
-                        AppLanguages.find(LocaleApplier.read(context))?.nativeName ?: stringResource(R.string.language_choose),
-                        color = palette.muted,
-                        fontSize = 13.sp,
-                        fontFamily = FontFamily.Default,
-                    )
-                }
-            }
-        }
         AccountSettingsCard(LocalAccountModel.current)
         SettingCard {
             SettingLine {
@@ -926,7 +905,7 @@ fun kindCount(kind: ContentKind, count: Int): String = when (kind) {
 }
 
 private fun cacheSizeLabel(context: android.content.Context): String {
-    val dir = context.filesDir.resolve("catalog-cache")
+    val dir = context.filesDir.resolve(com.worldtv.app.data.FileTextCache.DIRECTORY)
     val bytes = if (dir.exists()) dir.walkTopDown().filter { it.isFile }.sumOf { it.length() } else 0L
     if (bytes <= 0L) return "0 MB"
     val mb = bytes / (1024.0 * 1024.0)

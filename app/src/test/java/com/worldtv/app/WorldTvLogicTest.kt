@@ -183,6 +183,10 @@ class CatalogBehaviorTest {
         assertTrue(second.fromCache)
         assertTrue(second.offline)
         assertEquals(first.value, second.value)
+        online = true
+        val third = repository.loadCountries(ContentKind.TV, force = false)
+        assertTrue(third.fromCache)
+        assertEquals(first.value, third.value)
         assertEquals(1, calls)
     }
 

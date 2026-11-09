@@ -7,13 +7,18 @@ import com.worldtv.app.domain.Country
 import com.worldtv.app.domain.MediaEntry
 import com.worldtv.app.domain.UserNotice
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 
 class CatalogRepositoryImpl(
     private val client: DatasetClient,
     private val cache: TextCache,
     private val online: () -> Boolean,
 ) : CatalogRepository {
+    private val memory = ConcurrentHashMap<String, Any>()
+    private val gates = ConcurrentHashMap<String, Mutex>()
     override suspend fun loadCountries(kind: ContentKind, force: Boolean): CatalogResult<List<Country>> =
         loadParsed(DatasetPaths.countriesMetadata(kind), force) { body ->
             DatasetParser.parseCountries(body)
@@ -60,6 +65,7 @@ class CatalogRepositoryImpl(
         }
 
     override suspend fun clearCache() {
+        memory.clear()
         cache.clear()
     }
 
@@ -67,19 +73,38 @@ class CatalogRepositoryImpl(
         path: String,
         force: Boolean,
         parse: (String) -> T,
-    ): CatalogResult<T> {
-        if (!force && !online()) {
-            return readCached(path, offline = true, parse)
+    ): CatalogResult<T> = gates.getOrPut(path) { Mutex() }.withLock {
+        if (!force) {
+            remembered<T>(path)?.let { held ->
+                return@withLock CatalogResult(held, fromCache = true, offline = !online(), errorMessage = null)
+            }
+            val cached = readCached(path, offline = !online(), parse)
+            if (cached.value != null) {
+                memory[path] = cached.value
+                return@withLock cached
+            }
         }
-        return try {
+        try {
             val body = client.fetchText(path)
             val parsed = withContext(Dispatchers.Default) { parse(body) }
             cache.write(path, body)
+            memory[path] = parsed as Any
             CatalogResult(parsed, fromCache = false, offline = false, errorMessage = null)
         } catch (error: Exception) {
             val failure = error.friendly()
+            remembered<T>(path)?.let { held ->
+                return@withLock CatalogResult(
+                    held,
+                    fromCache = true,
+                    offline = !online(),
+                    errorMessage = failure.message,
+                    notice = failure.notice,
+                    noticeArg = failure.arg,
+                )
+            }
             val cached = readCached(path, offline = !online(), parse)
             if (cached.value != null) {
+                memory[path] = cached.value
                 cached.copy(errorMessage = failure.message, notice = failure.notice, noticeArg = failure.arg)
             } else {
                 CatalogResult(
@@ -93,6 +118,9 @@ class CatalogRepositoryImpl(
             }
         }
     }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> remembered(path: String): T? = memory[path] as? T
 
     private suspend fun <T> readCached(
         path: String,

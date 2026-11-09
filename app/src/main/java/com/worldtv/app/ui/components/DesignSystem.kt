@@ -1,14 +1,12 @@
 package com.worldtv.app.ui.components
 
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,7 +59,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -131,16 +128,6 @@ fun Modifier.wtShadow(shape: RoundedCornerShape, elevation: Dp = 8.dp, dark: Boo
 }
 
 @Composable
-private fun Modifier.pressScale(interaction: MutableInteractionSource): Modifier {
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) 0.985f else 1f, tween(150), label = "press")
-    return graphicsLayer {
-        scaleX = scale
-        scaleY = scale
-    }
-}
-
-@Composable
 internal fun focusAlpha(focused: Boolean): Float = if (focused) LocalFocusPulse.current else 1f
 
 @Composable
@@ -165,24 +152,10 @@ fun ModeSwitch(
             val active = kind == selected
             val itemShape = RoundedCornerShape(17.dp)
             val pulse = focusAlpha(focused)
-            val scale = if (focused) 0.985f + 0.03f * pulse else 1f
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .graphicsLayer { scaleX = scale; scaleY = scale }
                     .clip(itemShape)
-                    .then(
-                        if (active) {
-                            Modifier.shadow(
-                                8.dp,
-                                itemShape,
-                                ambientColor = palette.accent.copy(alpha = 0.45f),
-                                spotColor = palette.accent.copy(alpha = 0.55f),
-                            )
-                        } else {
-                            Modifier
-                        },
-                    )
                     .background(
                         when {
                             active -> Brush.linearGradient(listOf(palette.accentFrom, palette.accent))
@@ -190,7 +163,7 @@ fun ModeSwitch(
                             else -> Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
                         },
                     )
-                    .border(if (focused) 4.dp else 0.dp, (if (active) Color.White else palette.accent).copy(alpha = pulse), itemShape)
+                    .border(2.dp, if (focused) (if (active) Color.White else palette.accent).copy(alpha = pulse) else Color.Transparent, itemShape)
                     .clickable(interactionSource = interaction, indication = null) { onSelect(kind) }
                     .padding(top = 12.dp, bottom = 10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -320,16 +293,12 @@ fun CountryRow(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val pulse = focusAlpha(focused)
-    val scale = if (focused) 0.985f + 0.03f * pulse else 1f
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .pressScale(interaction)
-            .wtShadow(shape, elevation = 2.dp, dark = palette.dark)
             .clip(shape)
             .background(if (focused) lerp(palette.surface, palette.accent, 0.45f * pulse) else palette.surface)
-            .border(if (focused) 4.dp else 0.dp, palette.accent.copy(alpha = pulse), shape)
+            .border(2.dp, if (focused) palette.accent.copy(alpha = pulse) else Color.Transparent, shape)
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
@@ -364,7 +333,6 @@ fun FlagBadge(code: String, width: Dp, height: Dp) {
     Box(
         modifier = Modifier
             .size(width, height)
-            .shadow(6.dp, RoundedCornerShape(9.dp), clip = false, ambientColor = Color(0x4D3C50A0), spotColor = Color(0x4D3C50A0))
             .clip(RoundedCornerShape(9.dp))
             .background(LocalWt.current.surface2)
             .border(1.dp, Color(0x1F3C50A0), RoundedCornerShape(9.dp)),
@@ -389,21 +357,23 @@ fun ChannelCard(
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val pulse = focusAlpha(focused)
-    val scale = if (focused) 0.985f + 0.03f * pulse else 1f
     val cardColor = when {
         focused -> lerp(palette.surface, palette.accent, 0.5f * pulse)
         !playing -> palette.surface
         palette.dark -> lerp(palette.surface, palette.accent, 0.32f)
         else -> palette.soft
     }
+    val borderColor = when {
+        focused -> palette.accent.copy(alpha = pulse)
+        playing -> palette.accent
+        else -> Color.Transparent
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .pressScale(interaction)
             .clip(shape)
             .background(cardColor)
-            .border(if (focused) 4.dp else if (playing) 2.dp else 0.dp, if (playing || focused) palette.accent.copy(alpha = if (focused) pulse else 1f) else Color.Transparent, shape)
+            .border(2.dp, borderColor, shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onOpen)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,

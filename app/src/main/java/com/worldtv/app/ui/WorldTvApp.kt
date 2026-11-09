@@ -366,12 +366,6 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
     val cover = fullscreen && !inline && !inPlayer
 
     WorldTvTheme(choice = settings.theme, television = television, kind = catalog.kind) {
-    if (com.worldtv.app.data.LocaleApplier.read(context) == null) {
-        com.worldtv.app.ui.language.LanguagePicker { tag ->
-            com.worldtv.app.ui.language.applyAppLanguage(context, tag)
-        }
-        return@WorldTvTheme
-    }
     CompositionLocalProvider(LocalAccountModel provides accountModel) {
     Box(Modifier.fillMaxSize().background(LocalWt.current.bg)) {
         PhoneShell(

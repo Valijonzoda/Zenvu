@@ -12,14 +12,10 @@ object LocaleApplier {
     const val PREFS = "zenvu_language"
     const val KEY = "tag"
 
-    fun read(context: Context): String? {
-        val stored = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null)
-        return AppLanguages.find(stored)?.tag
-    }
+    fun read(context: Context): String? = "ru"
 
     fun wrap(context: Context): Context {
-        val tag = read(context) ?: return context
-        val locale = Locale.forLanguageTag(tag)
+        val locale = Locale.forLanguageTag("ru")
         Locale.setDefault(locale)
         val config = Configuration(context.resources.configuration)
         config.setLocale(locale)

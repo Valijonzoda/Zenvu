@@ -16,6 +16,9 @@ interface TextCache {
 }
 
 class FileTextCache(private val root: File) : TextCache {
+    companion object {
+        const val DIRECTORY = "catalog-v2"
+    }
     override fun read(path: String): CachedText? {
         val file = fileFor(path)
         if (!file.isFile) return null

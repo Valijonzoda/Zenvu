@@ -297,21 +297,19 @@ class CatalogViewModel(
         }
         channelJob = viewModelScope.launch {
             stateFlow.value = stateFlow.value.copy(loadingChannels = true)
-            val result = catalog.loadChannels(kind, codes, force)
+            val pool = catalogPool(kind, force)
             if (!isCurrent(generation) || stateFlow.value.kind != kind) return@launch
-            val channels = result.value.orEmpty()
+            val wanted = codes.map { it.lowercase() }.toSet()
+            val channels = withContext(Dispatchers.Default) { pool.filter { it.countryCode in wanted } }
             val language = stateFlow.value.language
             val languageStillValid = language == null || channels.any { entry ->
                 entry.languages.any { it.equals(language, ignoreCase = true) }
             }
+            val failed = channels.isEmpty() && pool.isEmpty()
             stateFlow.value = stateFlow.value.copy(
                 channels = channels,
                 loadingChannels = false,
-                channelsError = if (channels.isEmpty()) result.notice else null,
-                notice = result.notice ?: stateFlow.value.notice,
-                noticeArg = result.noticeArg ?: stateFlow.value.noticeArg,
-                offline = stateFlow.value.offline || result.offline,
-                fromCache = stateFlow.value.fromCache || result.fromCache,
+                channelsError = if (failed) stateFlow.value.catalogError else null,
                 language = if (languageStillValid) language else null,
             )
         }
@@ -323,39 +321,39 @@ class CatalogViewModel(
             return
         }
         catalogJob?.cancel()
-        catalogJob = viewModelScope.launch {
-            stateFlow.value = stateFlow.value.copy(loadingCatalog = true, catalogKind = kind, catalogError = null)
-            val result = catalog.loadAllChannels(kind, force)
-            if (stateFlow.value.kind != kind) return@launch
-            val channels = result.value
-            val loaded = channels ?: stateFlow.value.catalogChannels
-            val query = stateFlow.value.countryQuery
-            val allQuery = stateFlow.value.allQuery
-            val hits = withContext(Dispatchers.Default) { CatalogQuery.search(loaded, query) }
-            val allHits = withContext(Dispatchers.Default) { filterAll(loaded, allQuery) }
-            if (stateFlow.value.kind != kind || stateFlow.value.countryQuery != query) return@launch
-            stateFlow.value = stateFlow.value.copy(
-                catalogKind = kind,
-                catalogChannels = loaded,
-                loadingCatalog = false,
-                catalogError = if (channels == null) result.notice else null,
-                searchHits = hits,
-                allHits = allHits,
-            )
-        }
+        catalogJob = viewModelScope.launch { catalogPool(kind, force) }
     }
 
-    private suspend fun loadCatalogNow(kind: ContentKind): List<MediaEntry> {
+    private suspend fun loadCatalogNow(kind: ContentKind): List<MediaEntry> = catalogPool(kind, force = false)
+
+    private suspend fun catalogPool(kind: ContentKind, force: Boolean): List<MediaEntry> {
+        val current = stateFlow.value
+        if (!force && current.catalogKind == kind && current.catalogChannels.isNotEmpty()) {
+            if (current.loadingCatalog) {
+                stateFlow.value = current.copy(loadingCatalog = false)
+            }
+            return current.catalogChannels
+        }
         stateFlow.value = stateFlow.value.copy(loadingCatalog = true, catalogKind = kind, catalogError = null)
-        val result = catalog.loadAllChannels(kind, false)
-        if (stateFlow.value.kind != kind) return emptyList()
+        val result = catalog.loadAllChannels(kind, force)
+        if (stateFlow.value.kind != kind) return result.value.orEmpty()
         val loaded = result.value ?: stateFlow.value.catalogChannels
+        val query = stateFlow.value.countryQuery
+        val allQuery = stateFlow.value.allQuery
+        val hits = withContext(Dispatchers.Default) { CatalogQuery.search(loaded, query) }
+        val allHits = withContext(Dispatchers.Default) { filterAll(loaded, allQuery) }
+        if (stateFlow.value.kind != kind) return loaded
         stateFlow.value = stateFlow.value.copy(
             catalogKind = kind,
             catalogChannels = loaded,
             loadingCatalog = false,
-            catalogError = if (result.value == null) result.notice else null,
-            allHits = filterAll(loaded, stateFlow.value.allQuery),
+            catalogError = if (result.value == null && loaded.isEmpty()) result.notice else null,
+            notice = result.notice ?: stateFlow.value.notice,
+            noticeArg = result.noticeArg ?: stateFlow.value.noticeArg,
+            offline = stateFlow.value.offline || result.offline,
+            fromCache = stateFlow.value.fromCache || result.fromCache,
+            searchHits = if (stateFlow.value.countryQuery == query) hits else stateFlow.value.searchHits,
+            allHits = if (stateFlow.value.allQuery == allQuery) allHits else stateFlow.value.allHits,
         )
         return loaded
     }
