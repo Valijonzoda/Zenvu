@@ -71,7 +71,9 @@
     <string name="geo_note">This stream may be blocked in your region. We will still try to play it.</string>
     <string name="home_subtitle">Live TV, radio and webcams from every country</string>
     <string name="search_country">Search country</string>
+    <string name="search_catalog">Search countries and channels</string>
     <string name="section_countries">Countries</string>
+    <string name="section_channels">Channels</string>
     <string name="empty_country_search">No country found.\nTry another name.</string>
     <string name="favorites_subtitle">Saved on this device</string>
     <string name="favorites_subtitle_account">Saved in your account</string>
@@ -100,7 +102,7 @@
         <item quantity="other">%d cameras</item>
     </plurals>
     <string name="account_title">Account</string>
-    <string name="account_signed_out">Sign in to save favorites.</string>
+    <string name="account_signed_out">Favorites are saved on this device. Sign in to sync them.</string>
     <string name="account_signed_in">Signed in</string>
     <string name="account_sign_in">Sign in</string>
     <string name="account_sign_up">Create account</string>

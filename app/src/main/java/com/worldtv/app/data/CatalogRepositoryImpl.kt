@@ -52,6 +52,11 @@ class CatalogRepositoryImpl(
         }
     }
 
+    override suspend fun loadAllChannels(kind: ContentKind, force: Boolean): CatalogResult<List<MediaEntry>> =
+        loadParsed(DatasetPaths.allChannels(kind), force) { body ->
+            DatasetParser.parseChannels(body, kind)
+        }
+
     override suspend fun clearCache() {
         cache.clear()
     }

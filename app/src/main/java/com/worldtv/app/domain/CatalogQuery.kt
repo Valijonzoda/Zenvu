@@ -19,6 +19,12 @@ object CatalogQuery {
             nameMatches && languageMatches && favoriteMatches
         }
     }
+
+    fun search(entries: List<MediaEntry>, query: String, limit: Int = 50): List<MediaEntry> {
+        val needle = query.trim()
+        if (needle.length < 2) return emptyList()
+        return filter(entries, needle, null, false, emptySet()).take(limit)
+    }
 }
 
 object CountrySelection {

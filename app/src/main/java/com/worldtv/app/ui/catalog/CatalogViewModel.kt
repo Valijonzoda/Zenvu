@@ -38,6 +38,10 @@ data class CatalogUiState(
     val fromCache: Boolean = false,
     val favoriteKeys: Set<String> = emptySet(),
     val favorites: List<MediaEntry> = emptyList(),
+    val catalogChannels: List<MediaEntry> = emptyList(),
+    val catalogKind: ContentKind? = null,
+    val loadingCatalog: Boolean = false,
+    val catalogError: UserNotice? = null,
 ) {
     val visibleCountries: List<Country>
         get() = countries.filter { CountrySelection.matches(it, countryQuery) }
@@ -52,6 +56,9 @@ data class CatalogUiState(
 
     val visibleChannels: List<MediaEntry>
         get() = CatalogQuery.filter(channels, channelQuery, language, favoritesOnly, favoriteKeys)
+
+    val searchHits: List<MediaEntry>
+        get() = CatalogQuery.search(catalogChannels, countryQuery)
 
     fun countryName(code: String): String {
         val fallback = countries.firstOrNull { it.code.equals(code, ignoreCase = true) }?.name ?: code.uppercase()
@@ -71,6 +78,7 @@ class CatalogViewModel(
 
     private var generation = 0
     private var channelJob: Job? = null
+    private var catalogJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -88,7 +96,9 @@ class CatalogViewModel(
     fun selectKind(kind: ContentKind) {
         if (stateFlow.value.kind == kind) return
         channelJob?.cancel()
+        catalogJob?.cancel()
         val generation = nextGeneration()
+        val query = stateFlow.value.countryQuery
         stateFlow.value = stateFlow.value.copy(
             kind = kind,
             countries = emptyList(),
@@ -101,8 +111,13 @@ class CatalogViewModel(
             countriesError = null,
             channelsError = null,
             notice = null,
+            catalogChannels = emptyList(),
+            catalogKind = null,
+            loadingCatalog = false,
+            catalogError = null,
         )
         viewModelScope.launch { loadKind(kind, force = false, generation = generation) }
+        if (query.trim().length >= 2) ensureCatalog(kind)
     }
 
     fun setChannelQuery(query: String) {
@@ -111,6 +126,7 @@ class CatalogViewModel(
 
     fun setCountryQuery(query: String) {
         stateFlow.value = stateFlow.value.copy(countryQuery = query)
+        if (query.trim().length >= 2) ensureCatalog(stateFlow.value.kind)
     }
 
     fun setLanguage(language: String?) {
@@ -127,6 +143,7 @@ class CatalogViewModel(
         stateFlow.value = stateFlow.value.copy(
             selectedCodes = normalized,
             language = null,
+            channelQuery = "",
             loadingChannels = true,
             channelsError = null,
         )
@@ -138,10 +155,13 @@ class CatalogViewModel(
 
     fun refresh() {
         channelJob?.cancel()
+        catalogJob?.cancel()
         val generation = nextGeneration()
         val kind = stateFlow.value.kind
+        val reloadCatalog = stateFlow.value.countryQuery.trim().length >= 2 || stateFlow.value.catalogChannels.isNotEmpty()
         stateFlow.value = stateFlow.value.copy(loadingCountries = true, loadingChannels = true, notice = null)
         viewModelScope.launch { loadKind(kind, force = true, generation = generation) }
+        if (reloadCatalog) ensureCatalog(kind, force = true)
     }
 
     fun toggleFavorite(entry: MediaEntry) {
@@ -204,6 +224,26 @@ class CatalogViewModel(
                 offline = stateFlow.value.offline || result.offline,
                 fromCache = stateFlow.value.fromCache || result.fromCache,
                 language = if (languageStillValid) language else null,
+            )
+        }
+    }
+
+    private fun ensureCatalog(kind: ContentKind, force: Boolean = false) {
+        val current = stateFlow.value
+        if (!force && current.catalogKind == kind && (current.catalogChannels.isNotEmpty() || current.catalogError != null || current.loadingCatalog)) {
+            return
+        }
+        catalogJob?.cancel()
+        catalogJob = viewModelScope.launch {
+            stateFlow.value = stateFlow.value.copy(loadingCatalog = true, catalogKind = kind, catalogError = null)
+            val result = catalog.loadAllChannels(kind, force)
+            if (stateFlow.value.kind != kind) return@launch
+            val channels = result.value
+            stateFlow.value = stateFlow.value.copy(
+                catalogKind = kind,
+                catalogChannels = channels ?: stateFlow.value.catalogChannels,
+                loadingCatalog = false,
+                catalogError = if (channels == null) result.notice else null,
             )
         }
     }

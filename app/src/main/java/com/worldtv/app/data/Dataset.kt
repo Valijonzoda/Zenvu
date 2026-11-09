@@ -26,6 +26,9 @@ object DatasetPaths {
 
     fun countryChannels(kind: ContentKind, code: String): String =
         "${kind.directory}/raw/countries/${code.lowercase()}.json"
+
+    fun allChannels(kind: ContentKind): String =
+        "${kind.directory}/raw/categories/all.json"
 }
 
 object DatasetParser {

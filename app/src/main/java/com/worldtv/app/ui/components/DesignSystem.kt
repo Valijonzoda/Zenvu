@@ -196,6 +196,7 @@ fun ModeSwitch(
 fun CountrySearchField(
     value: String,
     onValueChange: (String) -> Unit,
+    placeholder: String,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalWt.current
@@ -224,7 +225,7 @@ fun CountrySearchField(
                 Spacer(Modifier.width(10.dp))
                 Box(Modifier.weight(1f)) {
                     if (value.isEmpty()) {
-                        Text(stringResource(R.string.search_country), color = palette.muted, style = MaterialTheme.typography.bodyLarge)
+                        Text(placeholder, color = palette.muted, style = MaterialTheme.typography.bodyLarge)
                     }
                     inner()
                 }
@@ -300,6 +301,7 @@ fun ChannelCard(
     onToggleFavorite: () -> Unit,
     favoriteTags: Boolean = false,
     playing: Boolean = false,
+    subtitle: String? = null,
 ) {
     val palette = LocalWt.current
     val shape = RoundedCornerShape(20.dp)
@@ -330,14 +332,18 @@ fun ChannelCard(
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.height(4.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (playing) MetaTag(stringResource(R.string.now_playing), TagKind.Live)
-                else if (entry.kind == ContentKind.TV && !favoriteTags) MetaTag(stringResource(R.string.tag_live), TagKind.Live)
-                if (favoriteTags) {
-                    MetaTag(stringResource(entry.kind.labelRes()), TagKind.Plain)
-                    MetaTag(entry.countryCode.uppercase(), TagKind.Plain)
-                } else {
-                    entry.languages.firstOrNull()?.let { MetaTag(it.lowercase(), TagKind.Plain) }
+            if (subtitle != null) {
+                Text(subtitle, color = palette.muted, fontSize = 13.sp, fontFamily = LocalAppFont.current, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (playing) MetaTag(stringResource(R.string.now_playing), TagKind.Live)
+                    else if (entry.kind == ContentKind.TV && !favoriteTags) MetaTag(stringResource(R.string.tag_live), TagKind.Live)
+                    if (favoriteTags) {
+                        MetaTag(stringResource(entry.kind.labelRes()), TagKind.Plain)
+                        MetaTag(entry.countryCode.uppercase(), TagKind.Plain)
+                    } else {
+                        entry.languages.firstOrNull()?.let { MetaTag(it.lowercase(), TagKind.Plain) }
+                    }
                 }
             }
         }
@@ -528,8 +534,10 @@ private fun NavItem(
 ) {
     val palette = LocalWt.current
     val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
     Column(
         modifier = modifier
+            .border(if (focused) 3.dp else 0.dp, palette.accent, RoundedCornerShape(16.dp))
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

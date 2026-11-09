@@ -25,11 +25,14 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -106,6 +109,7 @@ import com.worldtv.app.domain.PlaybackPlan
 import com.worldtv.app.domain.PlaybackPlanner
 import com.worldtv.app.playback.buildPlayer
 import com.worldtv.app.ui.components.ChannelCard
+import com.worldtv.app.ui.screens.playbackStripHeight
 import com.worldtv.app.ui.components.artBrush
 import com.worldtv.app.ui.components.artIndex
 import com.worldtv.app.ui.theme.LocalWt
@@ -148,29 +152,33 @@ fun PlayerScreen(
         return
     }
     val palette = LocalWt.current
-    Column(Modifier.fillMaxSize().background(if (fullscreen) Color.Black else palette.bg)) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .then(if (fullscreen) Modifier.weight(1f) else Modifier.aspectRatio(if (entry.kind == ContentKind.RADIO) 1f / 0.8f else 16f / 10f)),
-        ) {
-            stage()
-        }
-        if (!fullscreen) {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+    val cover = fullscreen && !television
+    BoxWithConstraints(Modifier.fillMaxSize().background(if (cover) Color.Black else palette.bg)) {
+        val strip = playbackStripHeight(maxWidth, maxHeight)
+        Column(Modifier.fillMaxSize()) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .then(if (cover) Modifier.weight(1f) else Modifier.height(strip)),
             ) {
-                items(channels, key = { it.key }, contentType = { "channel" }) { item ->
-                    ChannelCard(
-                        entry = item,
-                        favorite = item.key in favoriteKeys,
-                        playing = item.key == entry.key,
-                        favoriteTags = true,
-                        onOpen = { onSelect(item) },
-                        onToggleFavorite = { onToggleFavorite(item) },
-                    )
+                stage()
+            }
+            if (!cover) {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(channels, key = { it.key }, contentType = { "channel" }) { item ->
+                        ChannelCard(
+                            entry = item,
+                            favorite = item.key in favoriteKeys,
+                            playing = item.key == entry.key,
+                            favoriteTags = true,
+                            onOpen = { onSelect(item) },
+                            onToggleFavorite = { onToggleFavorite(item) },
+                        )
+                    }
                 }
             }
         }
@@ -190,6 +198,8 @@ fun PlaybackStage(
     onToggleOrientation: () -> Unit,
     onSwipeDown: () -> Unit = {},
     onSwipeUp: () -> Unit = {},
+    onClose: () -> Unit = {},
+    television: Boolean = false,
     compact: Boolean = false,
     commands: PlaybackCommands? = null,
     modifier: Modifier = Modifier,
@@ -203,6 +213,8 @@ fun PlaybackStage(
             fullscreen = fullscreen,
             onToggleFavorite = onToggleFavorite,
             onBack = onBack,
+            onClose = onClose,
+            television = television,
             onSwipeDown = onSwipeDown,
             onSwipeUp = onSwipeUp,
             compact = compact,
@@ -220,6 +232,8 @@ fun PlaybackStage(
             onToggleFavorite = onToggleFavorite,
             onBack = onBack,
             onToggleOrientation = onToggleOrientation,
+            onClose = onClose,
+            television = television,
             onSwipeDown = onSwipeDown,
             onSwipeUp = onSwipeUp,
             compact = compact,
@@ -240,6 +254,8 @@ private fun VideoStage(
     onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
     onToggleOrientation: () -> Unit,
+    onClose: () -> Unit,
+    television: Boolean,
     onSwipeDown: () -> Unit,
     onSwipeUp: () -> Unit,
     compact: Boolean,
@@ -327,12 +343,13 @@ private fun VideoStage(
     LaunchedEffect(waiting) {
         commands?.buffering?.value = waiting
     }
-    LaunchedEffect(chrome, chromeTick, playing, error, useEmbed) {
-        if (!chrome || error != null) return@LaunchedEffect
+    LaunchedEffect(chrome, chromeTick, playing, error, useEmbed, television) {
+        if (television || !chrome || error != null) return@LaunchedEffect
         if (direct && !playing) return@LaunchedEffect
         delay(3_000)
         chrome = false
     }
+    val showChrome = television || chrome
     if (!compact && entry.kind != ContentKind.RADIO) KeepScreenOn()
     val density = LocalDensity.current
     val cornerPx = with(density) { 18.dp.toPx() }
@@ -428,7 +445,7 @@ private fun VideoStage(
                 color = Color.White,
                 strokeWidth = 3.dp,
             )
-        } else if (!compact && direct && chrome) {
+        } else if (!compact && direct && showChrome) {
             PlayOrb(
                 playing = playing,
                 large = false,
@@ -445,8 +462,8 @@ private fun VideoStage(
                 modifier = Modifier.align(Alignment.Center),
             )
         }
-        if (!compact && chrome) {
-            if (fullscreen) {
+        if (!compact && showChrome) {
+            if (fullscreen || television) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -454,7 +471,11 @@ private fun VideoStage(
                         .padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    StageButton(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), onBack)
+                    StageButton(
+                        if (television) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack,
+                        stringResource(if (television) R.string.stop else R.string.back),
+                        if (television) onClose else onBack,
+                    )
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(entry.name, color = Color.White, fontFamily = LocalAppFont.current, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, maxLines = 1)
@@ -468,15 +489,17 @@ private fun VideoStage(
                     )
                 }
             }
-            StageButton(
-                icon = if (fullscreen) Icons.Filled.StayCurrentPortrait else Icons.Filled.StayCurrentLandscape,
-                description = stringResource(if (fullscreen) R.string.watch_vertical else R.string.watch_landscape),
-                onClick = {
-                    chromeTick += 1
-                    onToggleOrientation()
-                },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
-            )
+            if (!television) {
+                StageButton(
+                    icon = if (fullscreen) Icons.Filled.StayCurrentPortrait else Icons.Filled.StayCurrentLandscape,
+                    description = stringResource(if (fullscreen) R.string.watch_vertical else R.string.watch_landscape),
+                    onClick = {
+                        chromeTick += 1
+                        onToggleOrientation()
+                    },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
+                )
+            }
         }
         }
 }
@@ -490,6 +513,8 @@ private fun RadioStage(
     fullscreen: Boolean,
     onToggleFavorite: () -> Unit,
     onBack: () -> Unit,
+    onClose: () -> Unit,
+    television: Boolean,
     onSwipeDown: () -> Unit,
     onSwipeUp: () -> Unit,
     compact: Boolean,
@@ -571,11 +596,11 @@ private fun RadioStage(
                 TextButton(onClick = container.radio::retry) { Text(stringResource(R.string.retry)) }
             }
         }
-        if (fullscreen) {
+        if (fullscreen || television) {
             StageButton(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                stringResource(R.string.back),
-                onBack,
+                if (television) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack,
+                stringResource(if (television) R.string.stop else R.string.back),
+                if (television) onClose else onBack,
                 modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
             )
         }
@@ -653,12 +678,15 @@ private fun GestureLayer(
 private fun PlayOrb(playing: Boolean, large: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val palette = LocalWt.current
     val size = if (large) 72.dp else 68.dp
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
     Box(
         modifier = modifier
             .size(size)
+            .border(if (focused) 3.dp else 0.dp, Color.White, CircleShape)
             .clip(CircleShape)
             .background(if (large) Brush.linearGradient(listOf(palette.accentFrom, palette.accent)) else Brush.linearGradient(listOf(Color.White, Color.White)))
-            .clickable(onClick = onClick),
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
@@ -678,12 +706,15 @@ private fun StageButton(
     modifier: Modifier = Modifier,
     tint: Color = Color(0xFF3A4673),
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
     Box(
         modifier
-            .size(40.dp)
+            .size(48.dp)
+            .border(if (focused) 3.dp else 0.dp, Color.White, CircleShape)
             .clip(CircleShape)
             .background(Color.White.copy(alpha = 0.92f))
-            .clickable(onClick = onClick),
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(22.dp))
@@ -728,6 +759,9 @@ private fun EmbedView(url: String, commands: PlaybackCommands?, onReady: () -> U
         factory = { context ->
             WebView(context).apply {
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                isFocusable = false
+                isFocusableInTouchMode = false
+                descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 settings.mediaPlaybackRequiresUserGesture = false
@@ -978,12 +1012,15 @@ private fun FloatIcon(
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalWt.current
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
     Box(
         modifier
-            .size(36.dp)
+            .size(44.dp)
+            .border(if (focused) 3.dp else 0.dp, if (scrim) Color.White else palette.accent, CircleShape)
             .clip(CircleShape)
             .background(if (scrim) Color.Black.copy(alpha = 0.45f) else Color.Transparent)
-            .clickable(onClick = onClick),
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = description, tint = tint ?: palette.heading, modifier = Modifier.size(20.dp))

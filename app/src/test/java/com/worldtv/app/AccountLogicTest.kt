@@ -34,14 +34,36 @@ import java.io.File
 @OptIn(ExperimentalCoroutinesApi::class)
 class AccountLogicTest {
     @Test
-    fun guestCannotSaveFavorite() = runTest {
+    fun guestSavesFavoriteOnDevice() = runTest {
         val local = MemoryCache()
+        val guest = MemoryCache()
         val cloud = MemoryCloud()
-        val repo = repository(user = null, local = local, cloud = cloud)
-        assertEquals(FavoriteResult.AuthRequired, repo.toggle(sample("a")))
-        assertTrue(repo.favorites.first().isEmpty())
+        val repo = repository(user = null, local = local, guest = guest, cloud = cloud)
+        val entry = sample("a")
+        assertEquals(FavoriteResult.Changed, repo.toggle(entry))
+        assertEquals(listOf(entry.key), repo.favorites.first().map { it.key })
+        assertEquals(listOf(entry.key), guest.entries.value.map { it.entry.key })
         assertTrue(local.entries.value.isEmpty())
         assertTrue(cloud.upserts.isEmpty())
+        assertEquals(FavoriteResult.Changed, repo.toggle(entry))
+        assertTrue(repo.favorites.first().isEmpty())
+    }
+
+    @Test
+    fun signInKeepsDeviceFavorites() = runTest {
+        val users = MutableStateFlow<User?>(null)
+        val guest = MemoryCache()
+        val local = MemoryCache()
+        val cloud = MemoryCloud()
+        val repo = repository(users = users, local = local, guest = guest, cloud = cloud, now = 4_000L)
+        assertEquals(FavoriteResult.Changed, repo.toggle(sample("a")))
+        repo.start(backgroundScope)
+        runCurrent()
+        users.value = user()
+        runCurrent()
+        assertEquals(listOf("tv_a"), cloud.upserts.map { it.channelId })
+        assertEquals(listOf("tv_a"), local.entries.value.map { it.channelId })
+        assertEquals(listOf("tv_a"), repo.favorites.first().map { FavoriteIds.of(it) })
     }
 
     @Test
@@ -161,9 +183,10 @@ class AccountLogicTest {
         users: MutableStateFlow<User?> = MutableStateFlow(user),
         local: MemoryCache = MemoryCache(),
         legacy: MemoryLegacy = MemoryLegacy(),
+        guest: MemoryCache = MemoryCache(),
         cloud: MemoryCloud = MemoryCloud(),
         now: Long = 1_000L,
-    ) = AccountFavoritesRepository(local, legacy, cloud, ScriptedAuth(users), clock = { now })
+    ) = AccountFavoritesRepository(local, legacy, guest, cloud, ScriptedAuth(users), clock = { now })
 
     private fun user() = User("uid", "a@b.co", null, passwordProvider = true)
 

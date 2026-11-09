@@ -11,6 +11,8 @@ interface CatalogRepository {
         force: Boolean,
     ): CatalogResult<List<MediaEntry>>
 
+    suspend fun loadAllChannels(kind: ContentKind, force: Boolean): CatalogResult<List<MediaEntry>>
+
     suspend fun clearCache()
 }
 

@@ -7,6 +7,7 @@ import com.worldtv.app.data.AndroidNetworkStatus
 import com.worldtv.app.data.CatalogRepositoryImpl
 import com.worldtv.app.data.CredentialGoogleSignIn
 import com.worldtv.app.data.DataStoreSettingsRepository
+import com.worldtv.app.data.DeviceFavoriteCache
 import com.worldtv.app.data.DisabledAuthRepository
 import com.worldtv.app.data.FavoriteCloud
 import com.worldtv.app.data.FileFavoriteCache
@@ -42,6 +43,7 @@ class AppContainer(context: Context) {
     val favorites: AccountFavoritesRepository = AccountFavoritesRepository(
         local = favoriteCache,
         legacy = favoriteCache,
+        guest = DeviceFavoriteCache(File(appContext.filesDir, "favorites-device.json")),
         cloud = wiring.cloud,
         auth = auth,
     )

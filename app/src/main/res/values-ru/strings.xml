@@ -71,7 +71,9 @@
     <string name="geo_note">Этот поток может быть недоступен в вашем регионе. Мы всё равно попробуем его открыть.</string>
     <string name="home_subtitle">Прямое ТВ, радио и камеры из всех стран</string>
     <string name="search_country">Поиск страны</string>
+    <string name="search_catalog">Поиск стран и каналов</string>
     <string name="section_countries">Страны</string>
+    <string name="section_channels">Каналы</string>
     <string name="empty_country_search">Страна не найдена.\nПопробуйте другое название.</string>
     <string name="favorites_subtitle">Сохранено на этом устройстве</string>
     <string name="favorites_subtitle_account">Сохранено в аккаунте</string>
@@ -88,7 +90,7 @@
     <string name="settings_background_title">Радио в фоне</string>
     <string name="privacy_body">Вы можете смотреть без аккаунта. Если вы войдёте, Zenvu сохранит вашу почту и выбранные каналы в Firebase, чтобы избранное следовало за аккаунтом. Тема и последняя страна остаются на этом устройстве.\n\nУдалить аккаунт можно в Настройках. Это удалит пользователя Firebase и сохранённое избранное. Страница удаления: https://valijonzoda.github.io/Zenvu/delete-account/\n\nПриложение скачивает списки каналов с GitHub (открытый каталог Famelack). GitHub может видеть сетевой адрес этого запроса. Когда вы нажимаете воспроизведение, устройство подключается напрямую к оператору потока или, для встроенных камер, к YouTube. Эти сервисы получают обычные технические данные плеера, включая ваш IP-адрес.\n\nНекоторые записи помечены как ограниченные по региону. Поток также может не открыться, потому что он недоступен или использует формат, который это устройство не воспроизводит.\n\nУдалите сохранённые списки в Настройках, чтобы стереть скачанный каталог. Удаление приложения стирает настройки на устройстве. Избранное в аккаунте остаётся, пока вы не удалите аккаунт.\n\nZenvu — независимый каталог. Это не официальное приложение Famelack, и его не ведут каналы, станции и владельцы камер.</string>
     <string name="account_title">Аккаунт</string>
-    <string name="account_signed_out">Войдите, чтобы сохранять избранное.</string>
+    <string name="account_signed_out">Избранное хранится на устройстве. Войдите, чтобы синхронизировать его.</string>
     <string name="account_signed_in">Вы вошли</string>
     <string name="account_sign_in">Войти</string>
     <string name="account_sign_up">Создать аккаунт</string>

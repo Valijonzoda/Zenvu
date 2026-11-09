@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -41,6 +40,7 @@ interface FavoriteCloud {
 class AccountFavoritesRepository(
     private val local: LocalFavoriteCache,
     private val legacy: LegacyFavoriteStore,
+    private val guest: LocalFavoriteCache,
     private val cloud: FavoriteCloud,
     private val auth: AuthRepository,
     private val clock: () -> Long = { System.currentTimeMillis() },
@@ -53,11 +53,8 @@ class AccountFavoritesRepository(
     val migrationOffer: StateFlow<List<MediaEntry>> = migration.asStateFlow()
 
     override val favorites: Flow<List<MediaEntry>> = auth.currentUser.flatMapLatest { user ->
-        if (user == null) {
-            flowOf(emptyList())
-        } else {
-            local.entries.map { items -> items.map { it.entry } }
-        }
+        val source = if (user == null) guest.entries else local.entries
+        source.map { items -> items.map { it.entry } }
     }
 
     fun start(scope: CoroutineScope) {
@@ -65,18 +62,25 @@ class AccountFavoritesRepository(
     }
 
     override suspend fun toggle(entry: MediaEntry): FavoriteResult {
+        val uid = auth.currentUser.value?.uid
+        if (uid == null) {
+            val id = FavoriteIds.of(entry)
+            mirrorGuest(entry, present = guest.entries.value.none { it.channelId == id })
+            return FavoriteResult.Changed
+        }
         val op = mutex.withLock {
-            val uid = auth.currentUser.value?.uid ?: return FavoriteResult.AuthRequired
             val id = FavoriteIds.of(entry)
             val current = local.entries.value
             if (current.any { it.channelId == id }) {
                 pending[id] = PendingWrite(clock(), null)
                 local.write(current.filterNot { it.channelId == id })
+                mirrorGuest(entry, present = false)
                 CloudOp.Delete(uid, id)
             } else {
                 val favorite = CachedFavorite(entry, clock())
                 pending[id] = PendingWrite(favorite.addedAtMillis, favorite)
                 local.write(listOf(favorite) + current)
+                mirrorGuest(entry, present = true)
                 CloudOp.Upsert(uid, favorite)
             }
         }
@@ -85,14 +89,19 @@ class AccountFavoritesRepository(
     }
 
     override suspend fun add(entry: MediaEntry): FavoriteResult {
+        val uid = auth.currentUser.value?.uid
+        if (uid == null) {
+            mirrorGuest(entry, present = true)
+            return FavoriteResult.Changed
+        }
         val op = mutex.withLock {
-            val uid = auth.currentUser.value?.uid ?: return FavoriteResult.AuthRequired
             val id = FavoriteIds.of(entry)
             val current = local.entries.value
             if (current.any { it.channelId == id }) return@withLock null
             val favorite = CachedFavorite(entry, clock())
             pending[id] = PendingWrite(favorite.addedAtMillis, favorite)
             local.write(listOf(favorite) + current)
+            mirrorGuest(entry, present = true)
             CloudOp.Upsert(uid, favorite)
         } ?: return FavoriteResult.Changed
         push(op)
@@ -100,8 +109,8 @@ class AccountFavoritesRepository(
     }
 
     override suspend fun isFavorite(key: String): Boolean {
-        if (auth.currentUser.value == null) return false
-        return local.entries.value.any { it.entry.key == key }
+        val source = if (auth.currentUser.value == null) guest.entries.value else local.entries.value
+        return source.any { it.entry.key == key }
     }
 
     fun dismissLegacy() {
@@ -154,6 +163,7 @@ class AccountFavoritesRepository(
                 }
                 previous = uid
                 if (uid == null) return@collectLatest
+                mergeGuest(uid)
                 if (!dismissed) {
                     val saved = legacy.read()
                     migration.value = saved.map { it.entry }
@@ -162,6 +172,44 @@ class AccountFavoritesRepository(
                     apply(uid, snapshot)
                 }
             }
+        }
+    }
+
+    private suspend fun mirrorGuest(entry: MediaEntry, present: Boolean) {
+        val id = FavoriteIds.of(entry)
+        val current = guest.entries.value
+        val next = if (present) {
+            if (current.any { it.channelId == id }) {
+                current
+            } else {
+                listOf(CachedFavorite(entry, clock())) + current
+            }
+        } else {
+            current.filterNot { it.channelId == id }
+        }
+        if (next != current) guest.write(next)
+    }
+
+    private suspend fun mergeGuest(uid: String) {
+        val saved = guest.entries.value
+        if (saved.isEmpty()) return
+        val existing = local.entries.value.map { it.channelId }.toSet()
+        val added = saved.filter { it.channelId !in existing }
+        mutex.withLock {
+            added.forEach { item ->
+                pending[item.channelId] = PendingWrite(item.addedAtMillis.coerceAtLeast(1L), item)
+            }
+        }
+        for (item in added) {
+            try {
+                cloud.upsert(uid, item)
+            } catch (error: Exception) {
+                accountLog("favorite sync failed: ${error.javaClass.simpleName}")
+            }
+        }
+        mutex.withLock {
+            if (auth.currentUser.value?.uid != uid) return
+            local.write(FavoriteMerger.mergeLegacy(local.entries.value, saved, clock()))
         }
     }
 

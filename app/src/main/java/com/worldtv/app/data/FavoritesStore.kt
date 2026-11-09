@@ -24,6 +24,31 @@ interface LegacyFavoriteStore {
     fun clearLegacy()
 }
 
+class DeviceFavoriteCache(private val file: File) : LocalFavoriteCache {
+    private val lock = Any()
+    private val state = MutableStateFlow(readStored())
+    override val entries: StateFlow<List<CachedFavorite>> = state.asStateFlow()
+
+    override suspend fun write(entries: List<CachedFavorite>) {
+        synchronized(lock) {
+            file.parentFile?.mkdirs()
+            file.writeText(FavoritesCodec.encodeCached(entries))
+            state.value = entries
+        }
+    }
+
+    override suspend fun clear() {
+        write(emptyList())
+    }
+
+    private fun readStored(): List<CachedFavorite> {
+        synchronized(lock) {
+            if (!file.isFile) return emptyList()
+            return runCatching { FavoritesCodec.decodeCached(file.readText()) }.getOrDefault(emptyList())
+        }
+    }
+}
+
 class FileFavoriteCache(private val file: File) : LocalFavoriteCache, LegacyFavoriteStore {
     private val directory = file.parentFile ?: error("Favorites file needs a directory")
     private val legacyFile = File(directory, "favorites-legacy.json")
