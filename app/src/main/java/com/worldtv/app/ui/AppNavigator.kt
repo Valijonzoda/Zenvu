@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 sealed interface AppScreen {
     data object Catalog : AppScreen
     data object Countries : AppScreen
+    data object AllChannels : AppScreen
     data object Favorites : AppScreen
     data object Settings : AppScreen
     data object Privacy : AppScreen

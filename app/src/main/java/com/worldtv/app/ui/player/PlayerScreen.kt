@@ -6,6 +6,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
 import android.graphics.Outline
 import android.view.LayoutInflater
@@ -13,8 +14,10 @@ import android.view.View
 import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.webkit.CookieManager
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
@@ -42,10 +45,13 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -59,6 +65,7 @@ import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.StayCurrentLandscape
@@ -102,7 +109,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.worldtv.app.AppContainer
@@ -111,7 +120,16 @@ import com.worldtv.app.domain.ContentKind
 import com.worldtv.app.domain.MediaEntry
 import com.worldtv.app.domain.PlaybackPlan
 import com.worldtv.app.domain.PlaybackPlanner
+import com.worldtv.app.ui.components.focusAlpha
+import com.worldtv.app.playback.StreamChoices
+import com.worldtv.app.playback.applyAudioLanguage
+import com.worldtv.app.playback.applyAutoQuality
+import com.worldtv.app.playback.applyFixedQuality
+import com.worldtv.app.playback.applyTextLanguage
 import com.worldtv.app.playback.buildPlayer
+import com.worldtv.app.playback.nextLowerQuality
+import com.worldtv.app.playback.readChoices
+import com.worldtv.app.playback.shouldDropQuality
 import com.worldtv.app.ui.components.ChannelCard
 import com.worldtv.app.ui.screens.FocusJump
 import com.worldtv.app.ui.screens.playbackStripHeight
@@ -297,9 +315,7 @@ private fun VideoStage(
     commands: PlaybackCommands?,
     modifier: Modifier = Modifier,
 ) {
-    val palette = LocalWt.current
     val context = LocalContext.current
-    val focusManager = LocalFocusManager.current
     val plan = remember(entry.key) { PlaybackPlanner.plan(entry) }
     var useEmbed by remember(entry.key) { mutableStateOf(plan is PlaybackPlan.Embed) }
     var urlIndex by remember(entry.key) { mutableIntStateOf(0) }
@@ -311,7 +327,21 @@ private fun VideoStage(
     var error by remember(entry.key) { mutableStateOf<String?>(null) }
     var chrome by remember(entry.key) { mutableStateOf(true) }
     var chromeTick by remember(entry.key) { mutableIntStateOf(0) }
-    val player = remember(context) { buildPlayer(context.applicationContext, audioOnly = false) }
+    val trackSelector = remember(context) { DefaultTrackSelector(context.applicationContext) }
+    val player = remember(context) { buildPlayer(context.applicationContext, audioOnly = false, trackSelector) }
+    val qualityGate = remember(entry.key, urlIndex) { QualityGate() }
+    var choices by remember(entry.key, urlIndex) { mutableStateOf(StreamChoices()) }
+    var autoCap by remember(entry.key, urlIndex) { mutableIntStateOf(Int.MAX_VALUE) }
+    var fixedKey by remember(entry.key, urlIndex) { mutableStateOf<Int?>(null) }
+    var audioLanguage by remember(entry.key) { mutableStateOf<String?>(null) }
+    var textLanguage by remember(entry.key) { mutableStateOf<String?>(null) }
+    var optionsOpen by remember(entry.key) { mutableStateOf(false) }
+    qualityGate.auto = fixedKey == null
+    qualityGate.cap = autoCap
+    qualityGate.fixed = fixedKey
+    qualityGate.audio = audioLanguage
+    qualityGate.text = textLanguage
+    qualityGate.video = choices.video
     DisposableEffect(player) {
         onDispose { player.release() }
     }
@@ -342,9 +372,27 @@ private fun VideoStage(
                 buffering = playbackState == Player.STATE_BUFFERING ||
                     (playbackState == Player.STATE_IDLE && player.playWhenReady)
                 if (playbackState == Player.STATE_READY) error = null
+                if (playbackState == Player.STATE_BUFFERING && player.playWhenReady) {
+                    if (qualityGate.since == 0L) qualityGate.since = SystemClock.elapsedRealtime()
+                } else {
+                    qualityGate.since = 0L
+                }
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                val read = readChoices(tracks)
+                choices = read
+                qualityGate.video = read.video
+                if (qualityGate.applying) return
+                qualityGate.applying = true
+                applyStreamChoices(trackSelector, tracks, qualityGate)
+                qualityGate.applying = false
             }
 
             override fun onPlayerError(playbackError: PlaybackException) {
+                if (playbackError.shouldDropQuality() && dropQuality(player, trackSelector, qualityGate) { autoCap = it }) {
+                    return
+                }
                 val direct = plan as? PlaybackPlan.Direct
                 if (autoFallback && direct != null && urlIndex + 1 < direct.urls.size) {
                     urlIndex += 1
@@ -357,6 +405,21 @@ private fun VideoStage(
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
     }
+    LaunchedEffect(player, entry.key, urlIndex) {
+        while (true) {
+            delay(1_000)
+            if (!qualityGate.auto) continue
+            val since = qualityGate.since
+            if (since == 0L) continue
+            val now = SystemClock.elapsedRealtime()
+            if (now - since < 7_000) continue
+            dropQuality(player, trackSelector, qualityGate) { autoCap = it }
+        }
+    }
+    LaunchedEffect(fullscreen) {
+        if (fullscreen) optionsOpen = false
+    }
+    BackHandler(enabled = optionsOpen) { optionsOpen = false }
     LaunchedEffect(entry.key, urlIndex, retryToken, useEmbed) {
         if (useEmbed) {
             player.stop()
@@ -481,7 +544,7 @@ private fun VideoStage(
                 color = Color.White,
                 strokeWidth = 3.dp,
             )
-        } else if (!compact && direct && showChrome) {
+        } else if (!compact && direct && showChrome && !television) {
             PlayOrb(
                 playing = playing,
                 large = false,
@@ -498,48 +561,71 @@ private fun VideoStage(
                 modifier = Modifier.align(Alignment.Center),
             )
         }
-        if (!compact && showChrome) {
-            if (television) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent)))
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    StageButton(
-                        if (television) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack,
-                        stringResource(if (television) R.string.stop else R.string.back),
-                        if (television) onClose else onBack,
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(entry.name, color = Color.White, fontFamily = LocalAppFont.current, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, maxLines = 1)
-                        Text(countryName, color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, fontFamily = LocalAppFont.current, maxLines = 1)
-                    }
-                    StageButton(
-                        if (favorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                        stringResource(if (favorite) R.string.favorite_remove else R.string.favorite_add),
-                        onToggleFavorite,
-                        tint = if (favorite) palette.fav else Color(0xFF3A4673),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    StageButton(
-                        Icons.Filled.OpenInFull,
-                        stringResource(R.string.full_screen),
-                        onToggleOrientation,
-                    )
-                    if (television) {
-                        Spacer(Modifier.width(8.dp))
-                        StageButton(
-                            Icons.AutoMirrored.Filled.ArrowForward,
-                            stringResource(R.string.to_channels),
-                            { focusManager.moveFocus(FocusDirection.Right) },
-                        )
-                    }
-                }
+        if (!compact && showChrome && television) {
+            if (optionsOpen) {
+                StreamOptionsPanel(
+                    choices = choices,
+                    auto = fixedKey == null,
+                    cap = autoCap,
+                    fixedKey = fixedKey,
+                    audioLanguage = audioLanguage,
+                    textLanguage = textLanguage,
+                    onAuto = {
+                        fixedKey = null
+                        autoCap = Int.MAX_VALUE
+                        qualityGate.auto = true
+                        qualityGate.cap = Int.MAX_VALUE
+                        qualityGate.fixed = null
+                        applyAutoQuality(trackSelector, Int.MAX_VALUE)
+                    },
+                    onQuality = { key ->
+                        fixedKey = key
+                        qualityGate.auto = false
+                        qualityGate.fixed = key
+                        applyFixedQuality(trackSelector, player.currentTracks, key)
+                    },
+                    onAudio = { language ->
+                        audioLanguage = language
+                        qualityGate.audio = language
+                        applyAudioLanguage(trackSelector, language)
+                    },
+                    onText = { language ->
+                        textLanguage = language
+                        qualityGate.text = language
+                        qualityGate.textTouched = true
+                        applyTextLanguage(trackSelector, language)
+                    },
+                    modifier = Modifier.align(Alignment.CenterEnd).padding(end = 76.dp),
+                )
             }
-            if (!television) {
+            Column(
+                modifier = Modifier.align(Alignment.CenterEnd).padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                StageButton(
+                    Icons.Filled.Settings,
+                    stringResource(R.string.player_settings),
+                    { optionsOpen = !optionsOpen },
+                )
+                StageButton(
+                    Icons.Filled.OpenInFull,
+                    stringResource(R.string.full_screen),
+                    onToggleOrientation,
+                )
+            }
+        }
+        if (!compact && showChrome && !television) {
+            if (direct) {
+                StageButton(
+                    Icons.Filled.Settings,
+                    stringResource(R.string.player_settings),
+                    {
+                        chromeTick += 1
+                        optionsOpen = !optionsOpen
+                    },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(10.dp),
+                )
+            }
                 StageButton(
                     icon = if (fullscreen) Icons.Filled.StayCurrentPortrait else Icons.Filled.StayCurrentLandscape,
                     description = stringResource(if (fullscreen) R.string.watch_vertical else R.string.watch_landscape),
@@ -549,9 +635,44 @@ private fun VideoStage(
                     },
                     modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
                 )
-            }
         }
+        if (!compact && showChrome && !television && optionsOpen && direct) {
+            StreamOptionsPanel(
+                choices = choices,
+                auto = fixedKey == null,
+                cap = autoCap,
+                fixedKey = fixedKey,
+                audioLanguage = audioLanguage,
+                textLanguage = textLanguage,
+                onAuto = {
+                    fixedKey = null
+                    autoCap = Int.MAX_VALUE
+                    qualityGate.auto = true
+                    qualityGate.cap = Int.MAX_VALUE
+                    qualityGate.fixed = null
+                    applyAutoQuality(trackSelector, Int.MAX_VALUE)
+                },
+                onQuality = { key ->
+                    fixedKey = key
+                    qualityGate.auto = false
+                    qualityGate.fixed = key
+                    applyFixedQuality(trackSelector, player.currentTracks, key)
+                },
+                onAudio = { language ->
+                    audioLanguage = language
+                    qualityGate.audio = language
+                    applyAudioLanguage(trackSelector, language)
+                },
+                onText = { language ->
+                    textLanguage = language
+                    qualityGate.text = language
+                    qualityGate.textTouched = true
+                    applyTextLanguage(trackSelector, language)
+                },
+                modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp, top = 64.dp),
+            )
         }
+    }
 }
 
 @Composable
@@ -574,6 +695,7 @@ private fun RadioStage(
 ) {
     val palette = LocalWt.current
     val focusManager = LocalFocusManager.current
+    var radioOptions by remember { mutableStateOf(false) }
     val radio by container.radio.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var notificationsAllowed by remember { mutableStateOf(notificationsGranted(context)) }
@@ -614,6 +736,33 @@ private fun RadioStage(
         }
         if (fullscreen) {
             Equalizer(playing = radio.playing, modifier = Modifier.align(Alignment.Center).height(80.dp))
+            return@Box
+        }
+        if (television) {
+            BackHandler(enabled = radioOptions) { radioOptions = false }
+            Equalizer(playing = radio.playing, modifier = Modifier.align(Alignment.Center).height(80.dp))
+            if (radioOptions) {
+                Column(
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 76.dp)
+                        .width(280.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color.Black.copy(alpha = 0.82f))
+                        .padding(12.dp),
+                ) {
+                    Text(stringResource(R.string.stream_options), color = Color.White, fontFamily = LocalAppFont.current, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text(stringResource(R.string.stream_options_empty), color = Color.White.copy(alpha = 0.8f), fontFamily = LocalAppFont.current, fontSize = 14.sp)
+                }
+            }
+            Column(
+                modifier = Modifier.align(Alignment.CenterEnd).padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                StageButton(Icons.Filled.Settings, stringResource(R.string.player_settings)) { radioOptions = !radioOptions }
+                StageButton(Icons.Filled.OpenInFull, stringResource(R.string.full_screen), onToggleOrientation)
+            }
             return@Box
         }
         Equalizer(playing = radio.playing, modifier = Modifier.align(Alignment.Center).height(80.dp))
@@ -773,6 +922,154 @@ private fun PlayOrb(playing: Boolean, large: Boolean, onClick: () -> Unit, modif
     }
 }
 
+private class QualityGate {
+    var auto: Boolean = true
+    var cap: Int = Int.MAX_VALUE
+    var fixed: Int? = null
+    var audio: String? = null
+    var text: String? = null
+    var textTouched: Boolean = false
+    var applying: Boolean = false
+    var video: List<com.worldtv.app.playback.QualityOption> = emptyList()
+    var since: Long = 0L
+    var lastDrop: Long = 0L
+}
+
+private fun dropQuality(
+    player: ExoPlayer,
+    selector: DefaultTrackSelector,
+    gate: QualityGate,
+    publish: (Int) -> Unit,
+): Boolean {
+    if (!gate.auto) return false
+    val now = SystemClock.elapsedRealtime()
+    if (now - gate.lastDrop < 5_000) return false
+    val next = nextLowerQuality(gate.video, gate.cap) ?: return false
+    gate.lastDrop = now
+    gate.since = now
+    gate.cap = next
+    publish(next)
+    applyAutoQuality(selector, next)
+    if (player.playerError != null || player.playbackState == Player.STATE_IDLE) {
+        player.prepare()
+        player.play()
+    } else if (player.isCurrentMediaItemLive) {
+        player.seekToDefaultPosition()
+    } else {
+        player.seekTo(player.currentPosition.coerceAtLeast(0L))
+    }
+    return true
+}
+
+private fun applyStreamChoices(selector: DefaultTrackSelector, tracks: Tracks, gate: QualityGate) {
+    val fixed = gate.fixed
+    if (gate.auto) applyAutoQuality(selector, gate.cap)
+    else if (fixed != null) applyFixedQuality(selector, tracks, fixed)
+    if (gate.audio != null) applyAudioLanguage(selector, gate.audio)
+    if (gate.textTouched) applyTextLanguage(selector, gate.text)
+}
+
+@Composable
+private fun StreamOptionsPanel(
+    choices: StreamChoices,
+    auto: Boolean,
+    cap: Int,
+    fixedKey: Int?,
+    audioLanguage: String?,
+    textLanguage: String?,
+    onAuto: () -> Unit,
+    onQuality: (Int) -> Unit,
+    onAudio: (String) -> Unit,
+    onText: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val capLabel = choices.video.firstOrNull { it.key == cap }?.label()
+    val autoLabel = if (!auto || cap == Int.MAX_VALUE || capLabel == null) {
+        stringResource(R.string.quality_auto)
+    } else {
+        stringResource(R.string.quality_auto_up_to, capLabel)
+    }
+    Column(
+        modifier
+            .width(280.dp)
+            .heightIn(max = 420.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.Black.copy(alpha = 0.82f))
+            .verticalScroll(rememberScrollState())
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            stringResource(R.string.stream_options),
+            color = Color.White,
+            fontFamily = LocalAppFont.current,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 16.sp,
+        )
+        if (choices.video.size >= 2) {
+            OptionLabel(stringResource(R.string.quality_title))
+            OptionRow(autoLabel, auto, onAuto)
+            choices.video.forEach { option ->
+                OptionRow(option.label(), !auto && fixedKey == option.key) { onQuality(option.key) }
+            }
+        }
+        if (choices.audio.size >= 2) {
+            OptionLabel(stringResource(R.string.audio_language))
+            choices.audio.forEach { option ->
+                OptionRow(option.label, audioLanguage == option.language) { onAudio(option.language) }
+            }
+        }
+        if (choices.text.isNotEmpty()) {
+            OptionLabel(stringResource(R.string.subtitles))
+            OptionRow(stringResource(R.string.subtitles_off), textLanguage == null) { onText(null) }
+            choices.text.forEach { option ->
+                OptionRow(option.label, textLanguage == option.language) { onText(option.language) }
+            }
+        }
+        if (choices.video.size < 2 && choices.audio.size < 2 && choices.text.isEmpty()) {
+            Text(
+                stringResource(R.string.stream_options_empty),
+                color = Color.White.copy(alpha = 0.8f),
+                fontFamily = LocalAppFont.current,
+                fontSize = 14.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun OptionLabel(text: String) {
+    Text(
+        text,
+        color = Color.White.copy(alpha = 0.7f),
+        fontFamily = LocalAppFont.current,
+        fontSize = 13.sp,
+        modifier = Modifier.padding(top = 6.dp),
+    )
+}
+
+@Composable
+private fun OptionRow(label: String, selected: Boolean, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val pulse = focusAlpha(focused)
+    val shape = RoundedCornerShape(12.dp)
+    Text(
+        label,
+        color = Color.White,
+        fontFamily = LocalAppFont.current,
+        fontWeight = if (selected || focused) FontWeight.SemiBold else FontWeight.Normal,
+        fontSize = 16.sp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(if (selected || focused) Color(0xFF3D7EFF).copy(alpha = if (focused) pulse else 0.85f) else Color.White.copy(alpha = 0.08f))
+            .border(if (focused) 3.dp else 0.dp, Color.White.copy(alpha = pulse), shape)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    )
+}
+
 @Composable
 private fun StageButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -783,10 +1080,11 @@ private fun StageButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val pulse = focusAlpha(focused)
     Box(
         modifier
             .size(48.dp)
-            .border(if (focused) 4.dp else 0.dp, Color.White, CircleShape)
+            .border(if (focused) 4.dp else 0.dp, Color.White.copy(alpha = pulse), CircleShape)
             .clip(CircleShape)
             .background(if (focused) Color(0xFF3D7EFF) else Color.White.copy(alpha = 0.92f))
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
@@ -825,6 +1123,21 @@ private fun Equalizer(playing: Boolean, modifier: Modifier = Modifier) {
     }
 }
 
+private fun youtubeShell(id: String): String {
+    val src = "https://www.youtube-nocookie.com/embed/$id?autoplay=1&rel=0&modestbranding=1&playsinline=1&enablejsapi=1"
+    return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="referrer" content="strict-origin-when-cross-origin">
+        <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}iframe{position:fixed;inset:0;width:100%;height:100%;border:0}</style>
+        </head>
+        <body><iframe src="$src" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" allowfullscreen></iframe></body>
+        </html>
+    """.trimIndent()
+}
+
 @Composable
 private fun EmbedView(url: String, commands: PlaybackCommands?, onReady: () -> Unit = {}) {
     var webView by remember { mutableStateOf<WebView?>(null) }
@@ -842,8 +1155,12 @@ private fun EmbedView(url: String, commands: PlaybackCommands?, onReady: () -> U
                 settings.mediaPlaybackRequiresUserGesture = false
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = true
+                settings.userAgentString = settings.userAgentString
+                    .replace("; wv", "")
+                    .replace("Version/4.0 ", "")
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                webChromeClient = WebChromeClient()
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) {
                         ready.value()
@@ -860,7 +1177,18 @@ private fun EmbedView(url: String, commands: PlaybackCommands?, onReady: () -> U
             view.requestLayout()
             if (view.tag != url) {
                 view.tag = url
-                view.loadUrl(url)
+                val id = PlaybackPlanner.youtubeId(url)
+                if (id == null) {
+                    view.loadUrl(url)
+                } else {
+                    view.loadDataWithBaseURL(
+                        "https://www.youtube-nocookie.com",
+                        youtubeShell(id),
+                        "text/html",
+                        "UTF-8",
+                        null,
+                    )
+                }
             }
         },
         onRelease = { it.destroy() },
@@ -1092,7 +1420,7 @@ private fun FloatIcon(
     Box(
         modifier
             .size(44.dp)
-            .border(if (focused) 3.dp else 0.dp, if (scrim) Color.White else palette.accent, CircleShape)
+            .border(if (focused) 3.dp else 0.dp, (if (scrim) Color.White else palette.accent).copy(alpha = focusAlpha(focused)), CircleShape)
             .clip(CircleShape)
             .background(if (scrim) Color.Black.copy(alpha = 0.45f) else Color.Transparent)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),

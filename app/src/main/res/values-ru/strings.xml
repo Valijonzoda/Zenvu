@@ -6,6 +6,8 @@
     <string name="mode_webcam">Камеры</string>
     <string name="nav_discover">Обзор</string>
     <string name="nav_favorites">Избранное</string>
+    <string name="nav_all_channels">Все каналы</string>
+    <string name="random_channel">Случайный канал</string>
     <string name="nav_settings">Настройки</string>
     <string name="nav_countries">Страны</string>
     <string name="nav_search">Поиск</string>
@@ -36,7 +38,7 @@
     <string name="empty_search">Ничего не найдено.</string>
     <string name="empty_country">Для этой страны в каталоге нет записей.</string>
     <string name="empty_favorites_title">Пока ничего не сохранено</string>
-    <string name="empty_favorites_body">Нажмите сердце у любого канала.</string>
+    <string name="empty_favorites_body">Нажмите сердце у страны или канала.</string>
     <string name="settings_language">Язык приложения</string>
     <string name="language_choose">Выберите язык</string>
     <string name="settings_theme">Тема</string>
@@ -84,6 +86,15 @@
     <string name="to_player">К плееру</string>
     <string name="to_channels">К каналам</string>
     <string name="full_screen">На весь экран</string>
+    <string name="player_settings">Настройки потока</string>
+    <string name="stream_options">Параметры потока</string>
+    <string name="quality_title">Качество</string>
+    <string name="quality_auto">Авто</string>
+    <string name="quality_auto_up_to">Авто · до %1$s</string>
+    <string name="audio_language">Язык</string>
+    <string name="subtitles">Субтитры</string>
+    <string name="subtitles_off">Выкл</string>
+    <string name="stream_options_empty">В этом потоке нет других вариантов.</string>
     <string name="exit_full_screen">Выйти из полного экрана</string>
     <string name="volume">Громкость</string>
     <string name="settings_version_body">Версия %1$s · Независимый каталог, потоки принадлежат их владельцам</string>

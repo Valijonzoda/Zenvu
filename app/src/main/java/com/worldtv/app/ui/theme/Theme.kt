@@ -1,6 +1,12 @@
 package com.worldtv.app.ui.theme
 
 import android.app.Activity
+import android.provider.Settings
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
@@ -9,6 +15,8 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
@@ -123,6 +131,7 @@ val Outfit = FontFamily(
 )
 
 val LocalAppFont = staticCompositionLocalOf { Outfit }
+val LocalFocusPulse = compositionLocalOf { 1f }
 
 private fun type(television: Boolean): Typography {
     val scale = if (television) 1.12f else 1f
@@ -221,7 +230,20 @@ fun WorldTvTheme(
     } else {
         FontFamily.Default
     }
-    CompositionLocalProvider(LocalWt provides colors, LocalAppFont provides appFont) {
+    val pulseTransition = rememberInfiniteTransition(label = "focus")
+    val pulseAnimated by pulseTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(durationMillis = 700), RepeatMode.Reverse),
+        label = "focusPulse",
+    )
+    val pulseScale = Settings.Global.getFloat(
+        LocalContext.current.contentResolver,
+        Settings.Global.ANIMATOR_DURATION_SCALE,
+        1f,
+    )
+    val pulse = if (pulseScale == 0f) 1f else pulseAnimated
+    CompositionLocalProvider(LocalWt provides colors, LocalAppFont provides appFont, LocalFocusPulse provides pulse) {
         MaterialTheme(
             colorScheme = scheme,
             typography = type(television),

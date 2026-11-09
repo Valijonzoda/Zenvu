@@ -10,6 +10,7 @@ import com.worldtv.app.data.DataStoreSettingsRepository
 import com.worldtv.app.data.DeviceFavoriteCache
 import com.worldtv.app.data.DisabledAuthRepository
 import com.worldtv.app.data.FavoriteCloud
+import com.worldtv.app.data.FavoriteCountryStore
 import com.worldtv.app.data.FileFavoriteCache
 import com.worldtv.app.data.FileTextCache
 import com.worldtv.app.data.FirebaseAuthRepository
@@ -48,6 +49,7 @@ class AppContainer(context: Context) {
         auth = auth,
     )
     val settings: SettingsRepository = DataStoreSettingsRepository(appContext)
+    val favoriteCountries = FavoriteCountryStore(File(appContext.filesDir, "favorite-countries.txt"))
     val queue = PlaybackQueue()
     val radio = RadioPlaybackController(appContext, settings)
 

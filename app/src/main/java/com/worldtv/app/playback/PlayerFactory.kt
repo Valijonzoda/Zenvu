@@ -8,16 +8,22 @@ import androidx.media3.common.C
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 
-fun buildPlayer(context: Context, audioOnly: Boolean): ExoPlayer {
+fun buildPlayer(
+    context: Context,
+    audioOnly: Boolean,
+    trackSelector: DefaultTrackSelector? = null,
+): ExoPlayer {
     val httpFactory = DefaultHttpDataSource.Factory()
         .setUserAgent("Zenvu/1.0 (Android) ExoPlayer")
         .setAllowCrossProtocolRedirects(true)
         .setConnectTimeoutMs(12_000)
         .setReadTimeoutMs(20_000)
-    return ExoPlayer.Builder(context)
+    val builder = ExoPlayer.Builder(context)
         .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
-        .build()
+    if (trackSelector != null) builder.setTrackSelector(trackSelector)
+    return builder.build()
         .apply {
             val contentType = if (audioOnly) C.AUDIO_CONTENT_TYPE_MUSIC else C.AUDIO_CONTENT_TYPE_MOVIE
             setAudioAttributes(

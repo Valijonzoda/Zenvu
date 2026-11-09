@@ -20,20 +20,25 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.foundation.Image
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
@@ -73,6 +79,7 @@ import com.worldtv.app.domain.UserSettings
 import com.worldtv.app.ui.catalog.CatalogUiState
 import com.worldtv.app.ui.language.LanguagePicker
 import com.worldtv.app.ui.language.applyAppLanguage
+import com.worldtv.app.ui.components.focusAlpha
 import com.worldtv.app.ui.components.ChannelCard
 import com.worldtv.app.ui.components.CountryRow
 import com.worldtv.app.ui.components.CountrySearchField
@@ -97,7 +104,15 @@ fun HomePane(
     onOpenChannel: (MediaEntry) -> Unit,
     onToggleFavorite: (MediaEntry) -> Unit,
     onFavorites: (() -> Unit)? = null,
+    onAllChannels: (() -> Unit)? = null,
     onSettings: (() -> Unit)? = null,
+    onRandom: () -> Unit = {},
+    onToggleCountry: (String) -> Unit = {},
+    listIndex: Int = 0,
+    listOffset: Int = 0,
+    onSaveListPosition: (Int, Int) -> Unit = { _, _ -> },
+    returnCountryCode: String? = null,
+    onReturnConsumed: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalWt.current
@@ -108,7 +123,21 @@ fun HomePane(
         val filtered = if (query.isEmpty()) state.countries else state.countries.filter { CountrySelection.matches(it, query) }
         filtered.sortedBy { CountrySelection.displayName(it.code, it.name).lowercase() }
     }
+    val pendingCode = remember { returnCountryCode }
+    val listState = rememberLazyListState(listIndex, listOffset)
+    DisposableEffect(listState) {
+        onDispose { onSaveListPosition(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) }
+    }
+    LaunchedEffect(pendingCode, countries) {
+        val code = pendingCode ?: return@LaunchedEffect
+        val index = countries.indexOfFirst { it.code.equals(code, ignoreCase = true) }
+        if (index < 0) return@LaunchedEffect
+        val before = 2 + if (state.notice != null || state.offline) 1 else 0
+        listState.scrollToItem(before + index)
+        onReturnConsumed()
+    }
     LazyColumn(
+        state = listState,
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -135,6 +164,9 @@ fun HomePane(
             if (onFavorites != null && onSettings != null) {
                 Spacer(Modifier.height(14.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (onAllChannels != null) {
+                        SectionChip(stringResource(R.string.nav_all_channels), onAllChannels, Modifier.weight(1f))
+                    }
                     SectionChip(stringResource(R.string.nav_favorites), onFavorites, Modifier.weight(1f))
                     SectionChip(stringResource(R.string.nav_settings), onSettings, Modifier.weight(1f))
                 }
@@ -143,6 +175,8 @@ fun HomePane(
             ModeSwitch(selected = state.kind, onSelect = onKind)
             Spacer(Modifier.height(14.dp))
             CountrySearchField(state.countryQuery, onQuery, stringResource(R.string.search_catalog))
+            Spacer(Modifier.height(10.dp))
+            RandomChannelButton(onRandom)
         }
         if (state.notice != null || state.offline) {
             item {
@@ -171,11 +205,22 @@ fun HomePane(
                 EmptyBlock(Icons.Outlined.Search, stringResource(R.string.empty_country_search))
             }
             countries.isNotEmpty() -> items(countries, key = { it.code }) { country ->
+                val restore = country.code.equals(pendingCode, ignoreCase = true)
+                val requester = remember { FocusRequester() }
+                if (restore) {
+                    LaunchedEffect(country.code) {
+                        kotlinx.coroutines.delay(60)
+                        runCatching { requester.requestFocus() }
+                    }
+                }
                 CountryRow(
                     code = country.code,
                     name = CountrySelection.displayName(country.code, country.name),
                     capital = country.capital,
                     countLabel = kindCount(state.kind, country.channelCount),
+                    favorite = "${state.kind.name}:${country.code.lowercase()}" in state.favoriteCountryKeys,
+                    onToggleFavorite = { onToggleCountry(country.code) },
+                    focusRequester = if (restore) requester else null,
                     onClick = { onOpenCountry(country.code) },
                 )
             }
@@ -229,6 +274,9 @@ fun CountryChannelsPane(
     playingKey: String?,
     fullscreen: Boolean,
     player: @Composable () -> Unit,
+    listIndex: Int = 0,
+    listOffset: Int = 0,
+    onSaveListPosition: (String, Int, Int) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val channels = remember(state.channels, state.channelQuery, state.language, state.favoritesOnly, state.favoriteKeys) {
@@ -260,6 +308,9 @@ fun CountryChannelsPane(
                         onToggleFavorite = onToggleFavorite,
                         playingKey = playingKey,
                         showJump = true,
+                        listIndex = listIndex,
+                        listOffset = listOffset,
+                        onSaveListPosition = onSaveListPosition,
                         modifier = Modifier.weight(0.9f).fillMaxHeight(),
                     )
                 }
@@ -279,6 +330,9 @@ fun CountryChannelsPane(
                         onToggleFavorite = onToggleFavorite,
                         playingKey = playingKey,
                         showJump = false,
+                        listIndex = listIndex,
+                        listOffset = listOffset,
+                        onSaveListPosition = onSaveListPosition,
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                     )
                 }
@@ -298,10 +352,18 @@ private fun CountryChannelBrowser(
     onToggleFavorite: (MediaEntry) -> Unit,
     playingKey: String?,
     showJump: Boolean,
+    listIndex: Int = 0,
+    listOffset: Int = 0,
+    onSaveListPosition: (String, Int, Int) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalWt.current
     val country = state.countries.firstOrNull { it.code in state.selectedCodes }
+    val countryCode = country?.code.orEmpty()
+    val listState = rememberLazyListState(listIndex, listOffset)
+    DisposableEffect(countryCode) {
+        onDispose { onSaveListPosition(countryCode, listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) }
+    }
     Column(modifier) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -343,7 +405,15 @@ private fun CountryChannelBrowser(
             modifier = Modifier.padding(horizontal = 18.dp),
         )
         Spacer(Modifier.height(8.dp))
+        RandomChannelButton(
+            onClick = {
+                channels.randomOrNull()?.let { onOpen(channels, it) }
+            },
+            modifier = Modifier.padding(horizontal = 18.dp),
+        )
+        Spacer(Modifier.height(8.dp))
         LazyColumn(
+            state = listState,
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -391,6 +461,7 @@ internal fun FocusJump(label: String, direction: FocusDirection, modifier: Modif
     val focusManager = LocalFocusManager.current
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val pulse = focusAlpha(focused)
     val shape = RoundedCornerShape(16.dp)
     Row(
         modifier = modifier
@@ -398,7 +469,7 @@ internal fun FocusJump(label: String, direction: FocusDirection, modifier: Modif
             .height(52.dp)
             .clip(shape)
             .background(if (focused) palette.accent else palette.soft)
-            .border(if (focused) 4.dp else 0.dp, Color.White, shape)
+            .border(if (focused) 4.dp else 0.dp, Color.White.copy(alpha = pulse), shape)
             .clickable(interactionSource = interaction, indication = null) {
                 focusManager.moveFocus(direction)
             }
@@ -420,13 +491,14 @@ private fun SectionChip(label: String, onClick: () -> Unit, modifier: Modifier =
     val palette = LocalWt.current
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val pulse = focusAlpha(focused)
     val shape = RoundedCornerShape(16.dp)
     Box(
         modifier = modifier
             .height(48.dp)
             .clip(shape)
             .background(if (focused) palette.accent else palette.surface)
-            .border(if (focused) 4.dp else 0.dp, palette.accent, shape)
+            .border(if (focused) 4.dp else 0.dp, palette.accent.copy(alpha = pulse), shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -436,6 +508,36 @@ private fun SectionChip(label: String, onClick: () -> Unit, modifier: Modifier =
             fontFamily = LocalAppFont.current,
             fontWeight = FontWeight.SemiBold,
             fontSize = 15.sp,
+        )
+    }
+}
+
+@Composable
+private fun RandomChannelButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val palette = LocalWt.current
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val pulse = focusAlpha(focused)
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(shape)
+            .background(if (focused) palette.accent else palette.soft)
+            .border(if (focused) 4.dp else 0.dp, (if (focused) Color.White else palette.accent).copy(alpha = pulse), shape)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.Shuffle, contentDescription = null, tint = if (focused) Color.White else palette.accent)
+        Spacer(Modifier.padding(start = 10.dp))
+        Text(
+            stringResource(R.string.random_channel),
+            color = if (focused) Color.White else palette.heading,
+            fontFamily = LocalAppFont.current,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 16.sp,
         )
     }
 }
@@ -452,6 +554,8 @@ fun FavoritesPane(
     state: CatalogUiState,
     onOpen: (List<MediaEntry>, MediaEntry) -> Unit,
     onToggleFavorite: (MediaEntry) -> Unit,
+    onOpenCountry: (ContentKind, String) -> Unit,
+    onToggleCountry: (ContentKind, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalWt.current
@@ -469,6 +573,34 @@ fun FavoritesPane(
             Text(stringResource(subtitle), color = palette.muted, fontSize = 14.sp, fontFamily = FontFamily.Default)
             Spacer(Modifier.height(8.dp))
         }
+        item {
+            Text(stringResource(R.string.section_countries), color = palette.muted, fontSize = 14.sp, fontFamily = LocalAppFont.current)
+        }
+        val savedCountries = state.favoriteCountryKeys.mapNotNull { key ->
+            val parts = key.split(":", limit = 2)
+            val kind = runCatching { ContentKind.valueOf(parts[0]) }.getOrNull() ?: return@mapNotNull null
+            val code = parts.getOrNull(1)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            kind to code
+        }.sortedBy { (_, code) -> code }
+        if (savedCountries.isEmpty()) {
+            item { EmptyBlock(Icons.Outlined.FavoriteBorder, stringResource(R.string.empty_favorites_body)) }
+        } else {
+            items(savedCountries, key = { "${it.first.name}:${it.second}" }, contentType = { "favorite-country" }) { (kind, code) ->
+                val country = state.countries.firstOrNull { state.kind == kind && it.code.equals(code, ignoreCase = true) }
+                CountryRow(
+                    code = code,
+                    name = country?.let { CountrySelection.displayName(it.code, it.name) } ?: code.uppercase(),
+                    capital = country?.capital ?: kind.title,
+                    countLabel = country?.let { kindCount(kind, it.channelCount) } ?: kind.title,
+                    favorite = true,
+                    onToggleFavorite = { onToggleCountry(kind, code) },
+                    onClick = { onOpenCountry(kind, code) },
+                )
+            }
+        }
+        item {
+            Text(stringResource(R.string.section_channels), color = palette.muted, fontSize = 14.sp, fontFamily = LocalAppFont.current)
+        }
         if (state.favorites.isEmpty()) {
             item { EmptyBlock(Icons.Outlined.FavoriteBorder, stringResource(R.string.empty_favorites_title) + "\n" + stringResource(R.string.empty_favorites_body)) }
         } else {
@@ -478,6 +610,55 @@ fun FavoritesPane(
                     favorite = true,
                     favoriteTags = true,
                     onOpen = { onOpen(state.favorites.filter { it.kind == entry.kind }, entry) },
+                    onToggleFavorite = { onToggleFavorite(entry) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun AllChannelsPane(
+    state: CatalogUiState,
+    onKind: (ContentKind) -> Unit,
+    onQuery: (String) -> Unit,
+    onRefresh: () -> Unit,
+    onRetry: () -> Unit,
+    onOpen: (MediaEntry) -> Unit,
+    onToggleFavorite: (MediaEntry) -> Unit,
+    onRandom: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val palette = LocalWt.current
+    val shown = if (state.allQuery.isBlank()) state.catalogChannels else state.allHits
+    LaunchedEffect(state.kind) { onRefresh() }
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Text(stringResource(R.string.nav_all_channels), fontFamily = LocalAppFont.current, fontWeight = FontWeight.Bold, fontSize = 30.sp, color = palette.heading, letterSpacing = (-0.6).sp)
+            Spacer(Modifier.height(14.dp))
+            ModeSwitch(selected = state.kind, onSelect = onKind)
+            Spacer(Modifier.height(14.dp))
+            CountrySearchField(state.allQuery, onQuery, stringResource(R.string.search_channels))
+            Spacer(Modifier.height(10.dp))
+            RandomChannelButton(onRandom)
+        }
+        when {
+            state.loadingCatalog && state.catalogChannels.isEmpty() -> item { LoadingRows(card = true) }
+            state.catalogError != null && state.catalogChannels.isEmpty() -> item {
+                EmptyBlock(Icons.Outlined.Search, noticeText(state.catalogError, state.noticeArg))
+                TextButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
+            }
+            shown.isEmpty() -> item { EmptyBlock(Icons.Outlined.Search, stringResource(R.string.empty_search)) }
+            else -> items(shown, key = { it.key }, contentType = { "all-channel" }) { entry ->
+                ChannelCard(
+                    entry = entry,
+                    favorite = entry.key in state.favoriteKeys,
+                    subtitle = state.countryName(entry.countryCode),
+                    onOpen = { onOpen(entry) },
                     onToggleFavorite = { onToggleFavorite(entry) },
                 )
             }

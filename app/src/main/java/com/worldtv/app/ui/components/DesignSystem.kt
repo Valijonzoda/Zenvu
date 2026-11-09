@@ -37,6 +37,7 @@ import androidx.compose.material.icons.outlined.Radio
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.SportsSoccer
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.LiveTv
 import androidx.compose.material.icons.outlined.Tv
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.WbSunny
@@ -74,6 +75,9 @@ import com.worldtv.app.R
 import com.worldtv.app.domain.ContentKind
 import com.worldtv.app.domain.CountryFlags
 import com.worldtv.app.domain.MediaEntry
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import com.worldtv.app.ui.theme.LocalFocusPulse
 import com.worldtv.app.ui.theme.LocalWt
 import com.worldtv.app.ui.theme.LocalAppFont
 import kotlin.math.abs
@@ -139,6 +143,9 @@ private fun Modifier.pressScale(interaction: MutableInteractionSource): Modifier
 }
 
 @Composable
+internal fun focusAlpha(focused: Boolean): Float = if (focused) LocalFocusPulse.current else 1f
+
+@Composable
 fun ModeSwitch(
     selected: ContentKind,
     onSelect: (ContentKind) -> Unit,
@@ -159,9 +166,12 @@ fun ModeSwitch(
             val focused by interaction.collectIsFocusedAsState()
             val active = kind == selected
             val itemShape = RoundedCornerShape(17.dp)
+            val pulse = focusAlpha(focused)
+            val scale = if (focused) 0.985f + 0.03f * pulse else 1f
             Column(
                 modifier = Modifier
                     .weight(1f)
+                    .graphicsLayer { scaleX = scale; scaleY = scale }
                     .clip(itemShape)
                     .then(
                         if (active) {
@@ -182,7 +192,7 @@ fun ModeSwitch(
                             else -> Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
                         },
                     )
-                    .border(if (focused) 4.dp else 0.dp, if (active) Color.White else palette.accent, itemShape)
+                    .border(if (focused) 4.dp else 0.dp, (if (active) Color.White else palette.accent).copy(alpha = pulse), itemShape)
                     .clickable(interactionSource = interaction, indication = null) { onSelect(kind) }
                     .padding(top = 12.dp, bottom = 10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -232,14 +242,15 @@ fun CountrySearchField(
     if (!editing) {
         val interaction = remember { MutableInteractionSource() }
         val focused by interaction.collectIsFocusedAsState()
+        val pulse = focusAlpha(focused)
         Row(
             modifier = modifier
                 .fillMaxWidth()
                 .height(52.dp)
                 .wtShadow(shape, dark = palette.dark)
                 .clip(shape)
-                .background(if (focused) palette.accent.copy(alpha = 0.22f) else palette.surface)
-                .border(if (focused) 4.dp else 0.dp, palette.accent, shape)
+                .background(if (focused) palette.accent.copy(alpha = 0.22f * pulse) else palette.surface)
+                .border(if (focused) 4.dp else 0.dp, palette.accent.copy(alpha = pulse), shape)
                 .focusRequester(shellFocus)
                 .clickable(interactionSource = interaction, indication = null) { editing = true }
                 .padding(horizontal = 16.dp),
@@ -302,19 +313,26 @@ fun CountryRow(
     capital: String,
     countLabel: String,
     onClick: () -> Unit,
+    favorite: Boolean = false,
+    onToggleFavorite: (() -> Unit)? = null,
+    focusRequester: FocusRequester? = null,
 ) {
     val palette = LocalWt.current
     val shape = RoundedCornerShape(20.dp)
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val pulse = focusAlpha(focused)
+    val scale = if (focused) 0.985f + 0.03f * pulse else 1f
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .pressScale(interaction)
             .wtShadow(shape, elevation = 2.dp, dark = palette.dark)
             .clip(shape)
-            .background(if (focused) lerp(palette.surface, palette.accent, 0.45f) else palette.surface)
-            .border(if (focused) 4.dp else 0.dp, palette.accent, shape)
+            .background(if (focused) lerp(palette.surface, palette.accent, 0.45f * pulse) else palette.surface)
+            .border(if (focused) 4.dp else 0.dp, palette.accent.copy(alpha = pulse), shape)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -336,6 +354,10 @@ fun CountryRow(
                 .background(palette.soft)
                 .padding(horizontal = 11.dp, vertical = 5.dp),
         )
+        if (onToggleFavorite != null) {
+            Spacer(Modifier.width(8.dp))
+            HeartButton(favorite, onToggleFavorite)
+        }
     }
 }
 
@@ -368,8 +390,10 @@ fun ChannelCard(
     val shape = RoundedCornerShape(20.dp)
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val pulse = focusAlpha(focused)
+    val scale = if (focused) 0.985f + 0.03f * pulse else 1f
     val cardColor = when {
-        focused -> lerp(palette.surface, palette.accent, 0.5f)
+        focused -> lerp(palette.surface, palette.accent, 0.5f * pulse)
         !playing -> palette.surface
         palette.dark -> lerp(palette.surface, palette.accent, 0.32f)
         else -> palette.soft
@@ -377,10 +401,11 @@ fun ChannelCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .pressScale(interaction)
             .clip(shape)
             .background(cardColor)
-            .border(if (focused) 4.dp else if (playing) 2.dp else 0.dp, if (playing || focused) palette.accent else Color.Transparent, shape)
+            .border(if (focused) 4.dp else if (playing) 2.dp else 0.dp, if (playing || focused) palette.accent.copy(alpha = if (focused) pulse else 1f) else Color.Transparent, shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onOpen)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -494,13 +519,14 @@ fun IconTile(
     val shape = RoundedCornerShape(15.dp)
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val pulse = focusAlpha(focused)
     Box(
         modifier = Modifier
             .size(44.dp)
             .wtShadow(shape, dark = palette.dark)
             .clip(shape)
             .background(if (focused) palette.accent else palette.surface)
-            .border(if (focused) 4.dp else 0.dp, Color.White, shape)
+            .border(if (focused) 4.dp else 0.dp, Color.White.copy(alpha = pulse), shape)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -543,10 +569,11 @@ fun WtSwitch(checked: Boolean, label: String, onChecked: (Boolean) -> Unit) {
     val knob by animateDpAsState(if (checked) 23.dp else 3.dp, tween(200), label = "knob")
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val pulse = focusAlpha(focused)
     Box(
         modifier = Modifier
             .size(width = 50.dp, height = 30.dp)
-            .border(if (focused) 3.dp else 0.dp, palette.accent, CircleShape)
+            .border(if (focused) 3.dp else 0.dp, palette.accent.copy(alpha = pulse), CircleShape)
             .clip(CircleShape)
             .background(if (checked) palette.accent else palette.line)
             .clickable(interactionSource = interaction, indication = null) { onChecked(!checked) },
@@ -564,9 +591,11 @@ fun WtSwitch(checked: Boolean, label: String, onChecked: (Boolean) -> Unit) {
 @Composable
 fun WorldBottomBar(
     explore: Boolean,
+    allChannels: Boolean,
     favorites: Boolean,
     settings: Boolean,
     onExplore: () -> Unit,
+    onAllChannels: () -> Unit,
     onFavorites: () -> Unit,
     onSettings: () -> Unit,
 ) {
@@ -581,6 +610,7 @@ fun WorldBottomBar(
             .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 10.dp),
     ) {
         NavItem(stringResource(R.string.nav_discover), Icons.Outlined.Explore, explore, onExplore, Modifier.weight(1f))
+        NavItem(stringResource(R.string.nav_all_channels), Icons.Outlined.LiveTv, allChannels, onAllChannels, Modifier.weight(1f))
         NavItem(stringResource(R.string.nav_favorites), Icons.Outlined.FavoriteBorder, favorites, onFavorites, Modifier.weight(1f))
         NavItem(stringResource(R.string.nav_settings), Icons.Outlined.Tune, settings, onSettings, Modifier.weight(1f))
     }
@@ -597,10 +627,11 @@ private fun NavItem(
     val palette = LocalWt.current
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val pulse = focusAlpha(focused)
     Column(
         modifier = modifier
-            .background(if (focused) palette.accent.copy(alpha = 0.2f) else Color.Transparent, RoundedCornerShape(16.dp))
-            .border(if (focused) 4.dp else 0.dp, palette.accent, RoundedCornerShape(16.dp))
+            .background(if (focused) palette.accent.copy(alpha = 0.2f * pulse) else Color.Transparent, RoundedCornerShape(16.dp))
+            .border(if (focused) 4.dp else 0.dp, palette.accent.copy(alpha = pulse), RoundedCornerShape(16.dp))
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -620,7 +651,9 @@ private fun NavItem(
             color = if (selected) palette.accent else palette.muted,
             fontFamily = LocalAppFont.current,
             fontWeight = FontWeight.Medium,
-            fontSize = 12.sp,
+            fontSize = 11.sp,
+            maxLines = 2,
+            textAlign = TextAlign.Center,
         )
     }
 }

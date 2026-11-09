@@ -2,6 +2,7 @@ package com.worldtv.app.ui.catalog
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.worldtv.app.data.FavoriteCountryStore
 import com.worldtv.app.domain.CatalogQuery
 import com.worldtv.app.domain.CatalogRepository
 import com.worldtv.app.domain.ContentKind
@@ -45,6 +46,9 @@ data class CatalogUiState(
     val loadingCatalog: Boolean = false,
     val catalogError: UserNotice? = null,
     val searchHits: List<MediaEntry> = emptyList(),
+    val allQuery: String = "",
+    val allHits: List<MediaEntry> = emptyList(),
+    val favoriteCountryKeys: Set<String> = emptySet(),
 ) {
     val visibleCountries: List<Country>
         get() = countries.filter { CountrySelection.matches(it, countryQuery) }
@@ -70,6 +74,7 @@ class CatalogViewModel(
     private val catalog: CatalogRepository,
     private val favoritesRepository: FavoritesRepository,
     private val settings: SettingsRepository,
+    private val favoriteCountries: FavoriteCountryStore,
 ) : ViewModel() {
     private val stateFlow = kotlinx.coroutines.flow.MutableStateFlow(CatalogUiState())
     val state = stateFlow
@@ -80,8 +85,18 @@ class CatalogViewModel(
     private var channelJob: Job? = null
     private var catalogJob: Job? = null
     private var searchJob: Job? = null
+    private var allSearchJob: Job? = null
+    private var pendingCountry: String? = null
+    var countryListIndex: Int = 0
+    var countryListOffset: Int = 0
+    var returnCountryCode: String? = null
+    private val channelScroll = HashMap<String, Pair<Int, Int>>()
 
     init {
+        viewModelScope.launch(Dispatchers.IO) {
+            val saved = favoriteCountries.read()
+            stateFlow.value = stateFlow.value.copy(favoriteCountryKeys = saved)
+        }
         viewModelScope.launch {
             favoritesRepository.favorites.collect { entries ->
                 stateFlow.value = stateFlow.value.copy(
@@ -99,6 +114,10 @@ class CatalogViewModel(
         channelJob?.cancel()
         catalogJob?.cancel()
         searchJob?.cancel()
+        allSearchJob?.cancel()
+        countryListIndex = 0
+        countryListOffset = 0
+        returnCountryCode = null
         val generation = nextGeneration()
         val query = stateFlow.value.countryQuery
         stateFlow.value = stateFlow.value.copy(
@@ -118,6 +137,7 @@ class CatalogViewModel(
             loadingCatalog = false,
             catalogError = null,
             searchHits = emptyList(),
+            allHits = emptyList(),
         )
         viewModelScope.launch { loadKind(kind, force = false, generation = generation) }
         if (query.trim().length >= 2) ensureCatalog(kind)
@@ -140,6 +160,64 @@ class CatalogViewModel(
 
     fun setFavoritesOnly(enabled: Boolean) {
         stateFlow.value = stateFlow.value.copy(favoritesOnly = enabled)
+    }
+
+    fun setAllQuery(query: String) {
+        val current = stateFlow.value
+        stateFlow.value = current.copy(allQuery = query)
+        publishAll(current.catalogChannels, query, current.kind)
+    }
+
+    fun prepareCatalog() {
+        ensureCatalog(stateFlow.value.kind)
+    }
+
+    fun reloadCatalog() {
+        ensureCatalog(stateFlow.value.kind, force = true)
+    }
+
+    fun rememberCountry(code: String) {
+        returnCountryCode = code.lowercase()
+    }
+
+    fun consumeReturnCountry() {
+        returnCountryCode = null
+    }
+
+    fun channelScroll(code: String): Pair<Int, Int> = channelScroll[code.lowercase()] ?: (0 to 0)
+
+    fun saveChannelScroll(code: String, index: Int, offset: Int) {
+        if (code.isBlank()) return
+        channelScroll[code.lowercase()] = index to offset
+    }
+
+    fun openCountry(kind: ContentKind, code: String) {
+        val normalized = code.lowercase()
+        returnCountryCode = normalized
+        if (stateFlow.value.kind == kind) {
+            setCountries(setOf(normalized))
+            return
+        }
+        pendingCountry = normalized
+        selectKind(kind)
+        returnCountryCode = normalized
+    }
+
+    fun toggleCountry(kind: ContentKind, code: String) {
+        val key = "${kind.name}:${code.lowercase()}"
+        val current = stateFlow.value.favoriteCountryKeys
+        val next = if (key in current) current - key else current + key
+        stateFlow.value = stateFlow.value.copy(favoriteCountryKeys = next)
+        viewModelScope.launch(Dispatchers.IO) { favoriteCountries.write(next) }
+    }
+
+    suspend fun randomEntry(): MediaEntry? {
+        val kind = stateFlow.value.kind
+        val ready = stateFlow.value.catalogChannels.takeIf {
+            stateFlow.value.catalogKind == kind && it.isNotEmpty()
+        }
+        val pool = ready ?: loadCatalogNow(kind)
+        return pool.randomOrNull()
     }
 
     fun setCountries(codes: Set<String>) {
@@ -183,7 +261,13 @@ class CatalogViewModel(
         val countries = CountrySelection.withListings(countriesResult.value.orEmpty())
             .sortedBy { it.name.lowercase() }
         val saved = settings.selectedCountries(kind)
-        val selected = CountrySelection.choose(saved, countries, Locale.getDefault().country)
+        val pending = pendingCountry
+        pendingCountry = null
+        val selected = if (pending != null && countries.any { it.code.equals(pending, ignoreCase = true) }) {
+            setOf(pending)
+        } else {
+            CountrySelection.choose(saved, countries, Locale.getDefault().country)
+        }
         if (selected != saved) settings.setSelectedCountries(kind, selected)
         if (!isCurrent(generation)) return
         stateFlow.value = stateFlow.value.copy(
@@ -246,7 +330,9 @@ class CatalogViewModel(
             val channels = result.value
             val loaded = channels ?: stateFlow.value.catalogChannels
             val query = stateFlow.value.countryQuery
+            val allQuery = stateFlow.value.allQuery
             val hits = withContext(Dispatchers.Default) { CatalogQuery.search(loaded, query) }
+            val allHits = withContext(Dispatchers.Default) { filterAll(loaded, allQuery) }
             if (stateFlow.value.kind != kind || stateFlow.value.countryQuery != query) return@launch
             stateFlow.value = stateFlow.value.copy(
                 catalogKind = kind,
@@ -254,8 +340,41 @@ class CatalogViewModel(
                 loadingCatalog = false,
                 catalogError = if (channels == null) result.notice else null,
                 searchHits = hits,
+                allHits = allHits,
             )
         }
+    }
+
+    private suspend fun loadCatalogNow(kind: ContentKind): List<MediaEntry> {
+        stateFlow.value = stateFlow.value.copy(loadingCatalog = true, catalogKind = kind, catalogError = null)
+        val result = catalog.loadAllChannels(kind, false)
+        if (stateFlow.value.kind != kind) return emptyList()
+        val loaded = result.value ?: stateFlow.value.catalogChannels
+        stateFlow.value = stateFlow.value.copy(
+            catalogKind = kind,
+            catalogChannels = loaded,
+            loadingCatalog = false,
+            catalogError = if (result.value == null) result.notice else null,
+            allHits = filterAll(loaded, stateFlow.value.allQuery),
+        )
+        return loaded
+    }
+
+    private fun publishAll(entries: List<MediaEntry>, query: String, kind: ContentKind) {
+        allSearchJob?.cancel()
+        allSearchJob = viewModelScope.launch {
+            val hits = withContext(Dispatchers.Default) { filterAll(entries, query) }
+            val current = stateFlow.value
+            if (current.kind == kind && current.allQuery == query) {
+                stateFlow.value = current.copy(allHits = hits)
+            }
+        }
+    }
+
+    private fun filterAll(entries: List<MediaEntry>, query: String): List<MediaEntry> {
+        val needle = query.trim()
+        if (needle.isEmpty()) return emptyList()
+        return entries.filter { it.name.contains(needle, ignoreCase = true) }
     }
 
     private fun publishSearch(entries: List<MediaEntry>, query: String, kind: ContentKind) {

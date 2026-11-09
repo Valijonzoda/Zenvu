@@ -182,3 +182,15 @@ object FavoritesCodec {
         }
     }
 }
+
+class FavoriteCountryStore(private val file: File) {
+    fun read(): Set<String> {
+        if (!file.isFile) return emptySet()
+        return file.readLines().map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+    }
+
+    fun write(keys: Set<String>) {
+        file.parentFile?.mkdirs()
+        file.writeText(keys.joinToString("\n"))
+    }
+}

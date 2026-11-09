@@ -79,6 +79,7 @@ import com.worldtv.app.ui.player.FloatingPlayer
 import com.worldtv.app.ui.player.PlaybackCommands
 import com.worldtv.app.ui.player.PlaybackStage
 import com.worldtv.app.ui.player.PlayerScreen
+import com.worldtv.app.ui.screens.AllChannelsPane
 import com.worldtv.app.ui.screens.CountryChannelsPane
 import com.worldtv.app.ui.screens.FavoritesPane
 import com.worldtv.app.ui.screens.HomePane
@@ -94,7 +95,7 @@ import kotlinx.coroutines.launch
 fun WorldTvApp(container: AppContainer, television: Boolean) {
     val navigator: AppNavigator = viewModel()
     val catalogModel: CatalogViewModel = viewModel(factory = viewModelFactory {
-        CatalogViewModel(container.catalog, container.favorites, container.settings)
+        CatalogViewModel(container.catalog, container.favorites, container.settings, container.favoriteCountries)
     })
     val accountModel: AccountViewModel = viewModel(factory = viewModelFactory {
         AccountViewModel(container.auth, container.favorites)
@@ -462,9 +463,11 @@ private fun PhoneShell(
             if (showBar) {
                 WorldBottomBar(
                     explore = screen == AppScreen.Catalog || screen == AppScreen.Countries,
+                    allChannels = screen == AppScreen.AllChannels,
                     favorites = screen == AppScreen.Favorites,
                     settings = screen == AppScreen.Settings || screen == AppScreen.Privacy,
                     onExplore = { navigator.openSection(AppScreen.Catalog) },
+                    onAllChannels = { navigator.openSection(AppScreen.AllChannels) },
                     onFavorites = { navigator.openSection(AppScreen.Favorites) },
                     onSettings = { navigator.openSection(AppScreen.Settings) },
                 )
@@ -491,6 +494,7 @@ private fun PhoneShell(
                 onBack = navigator::back,
                 onCountries = onShowCountries,
                 onFavorites = { navigator.openSection(AppScreen.Favorites) },
+                onAllChannels = { navigator.openSection(AppScreen.AllChannels) },
                 onSettings = { navigator.openSection(AppScreen.Settings) },
                 onPrivacy = navigator::openPrivacy,
                 embedPlayback = embedPlayback,
@@ -542,6 +546,7 @@ private fun ScreenBody(
     onBack: () -> Unit,
     onCountries: () -> Unit,
     onFavorites: () -> Unit,
+    onAllChannels: () -> Unit,
     onSettings: () -> Unit,
     onPrivacy: () -> Unit,
     embedPlayback: Boolean,
@@ -549,6 +554,7 @@ private fun ScreenBody(
 ) {
     val queue by container.queue.state.collectAsStateWithLifecycle()
     val playing = queue.current?.takeIf { embedPlayback }
+    val scope = rememberCoroutineScope()
     when (screen) {
         AppScreen.Catalog -> HomePane(
             state = catalog,
@@ -556,17 +562,37 @@ private fun ScreenBody(
             onQuery = catalogModel::setCountryQuery,
             onRefresh = catalogModel::refresh,
             onOpenCountry = { code ->
+                catalogModel.rememberCountry(code)
                 catalogModel.setCountries(setOf(code))
                 onCountries()
             },
             onOpenChannel = { entry ->
+                catalogModel.rememberCountry(entry.countryCode)
                 catalogModel.setCountries(setOf(entry.countryCode))
                 onPlayInList(listOf(entry), entry)
                 onCountries()
             },
             onToggleFavorite = catalogModel::toggleFavorite,
             onFavorites = if (television) onFavorites else null,
+            onAllChannels = if (television) onAllChannels else null,
             onSettings = if (television) onSettings else null,
+            onRandom = {
+                scope.launch {
+                    val pick = catalogModel.randomEntry() ?: return@launch
+                    catalogModel.openCountry(pick.kind, pick.countryCode)
+                    onPlayInList(listOf(pick), pick)
+                    onCountries()
+                }
+            },
+            onToggleCountry = { code -> catalogModel.toggleCountry(catalog.kind, code) },
+            listIndex = catalogModel.countryListIndex,
+            listOffset = catalogModel.countryListOffset,
+            onSaveListPosition = { index, offset ->
+                catalogModel.countryListIndex = index
+                catalogModel.countryListOffset = offset
+            },
+            returnCountryCode = catalogModel.returnCountryCode,
+            onReturnConsumed = catalogModel::consumeReturnCountry,
         )
         AppScreen.Countries -> CountryChannelsPane(
             state = catalog,
@@ -578,6 +604,30 @@ private fun ScreenBody(
             playingKey = playing?.key,
             fullscreen = fullscreen && playing != null,
             player = stage,
+            listIndex = catalogModel.channelScroll(catalog.selectedCodes.firstOrNull().orEmpty()).first,
+            listOffset = catalogModel.channelScroll(catalog.selectedCodes.firstOrNull().orEmpty()).second,
+            onSaveListPosition = catalogModel::saveChannelScroll,
+        )
+        AppScreen.AllChannels -> AllChannelsPane(
+            state = catalog,
+            onKind = catalogModel::selectKind,
+            onQuery = catalogModel::setAllQuery,
+            onRefresh = catalogModel::prepareCatalog,
+            onRetry = catalogModel::reloadCatalog,
+            onOpen = { entry ->
+                catalogModel.openCountry(entry.kind, entry.countryCode)
+                onPlayInList(listOf(entry), entry)
+                onCountries()
+            },
+            onToggleFavorite = catalogModel::toggleFavorite,
+            onRandom = {
+                scope.launch {
+                    val pick = catalogModel.randomEntry() ?: return@launch
+                    catalogModel.openCountry(pick.kind, pick.countryCode)
+                    onPlayInList(listOf(pick), pick)
+                    onCountries()
+                }
+            },
         )
         AppScreen.Favorites -> FavoritesPane(
             state = catalog,
@@ -586,6 +636,11 @@ private fun ScreenBody(
                 onOpen(entries, entry)
             },
             onToggleFavorite = catalogModel::toggleFavorite,
+            onOpenCountry = { kind, code ->
+                catalogModel.openCountry(kind, code)
+                onCountries()
+            },
+            onToggleCountry = catalogModel::toggleCountry,
         )
         AppScreen.Settings -> SettingsPane(
             settings = settings,
