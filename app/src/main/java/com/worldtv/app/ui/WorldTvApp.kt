@@ -216,12 +216,14 @@ fun WorldTvApp(container: AppContainer, television: Boolean) {
     }
     DisposableEffect(playerOpen, preferPortrait, forceLandscape, heldLandscape, landscapeOrientation, television, fullscreen) {
         val host = activity
-        if (host != null && !television) {
-            val landscapeVideo = playerOpen && !preferPortrait && (forceLandscape || heldLandscape)
-            host.requestedOrientation = if (landscapeVideo) {
-                landscapeOrientation
-            } else {
-                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        if (host != null) {
+            if (!television) {
+                val landscapeVideo = playerOpen && !preferPortrait && (forceLandscape || heldLandscape)
+                host.requestedOrientation = if (landscapeVideo) {
+                    landscapeOrientation
+                } else {
+                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                }
             }
             val bars = WindowCompat.getInsetsController(host.window, host.window.decorView)
             if (fullscreen) {

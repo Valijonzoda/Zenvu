@@ -45,7 +45,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.focus.focusGroup
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
@@ -236,10 +235,12 @@ fun CountryChannelsPane(
         state.visibleChannels
     }
     BoxWithConstraints(modifier.fillMaxSize().background(LocalWt.current.bg)) {
-        val split = playingKey != null && !fullscreen && maxWidth > maxHeight
+        val width = maxWidth
+        val height = maxHeight
+        val split = playingKey != null && !fullscreen && width > height
         when {
             playingKey != null && fullscreen -> {
-                Box(Modifier.fillMaxSize().focusGroup().clipToBounds()) { player() }
+                Box(Modifier.fillMaxSize().clipToBounds()) { player() }
             }
             split -> {
                 Row(Modifier.fillMaxSize()) {
@@ -247,7 +248,6 @@ fun CountryChannelsPane(
                         Modifier
                             .weight(1.2f)
                             .fillMaxHeight()
-                            .focusGroup()
                             .clipToBounds(),
                     ) { player() }
                     CountryChannelBrowser(
@@ -260,14 +260,14 @@ fun CountryChannelsPane(
                         onToggleFavorite = onToggleFavorite,
                         playingKey = playingKey,
                         showJump = true,
-                        modifier = Modifier.weight(0.9f).fillMaxHeight().focusGroup(),
+                        modifier = Modifier.weight(0.9f).fillMaxHeight(),
                     )
                 }
             }
             else -> {
                 Column(Modifier.fillMaxSize()) {
                     if (playingKey != null) {
-                        Box(Modifier.fillMaxWidth().height(playbackStripHeight(maxWidth, maxHeight)).clipToBounds()) { player() }
+                        Box(Modifier.fillMaxWidth().height(playbackStripHeight(width, height)).clipToBounds()) { player() }
                     }
                     CountryChannelBrowser(
                         state = state,

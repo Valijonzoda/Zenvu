@@ -82,7 +82,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.focus.focusGroup
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -160,15 +159,17 @@ fun PlayerScreen(
     val palette = LocalWt.current
     val cover = fullscreen && !television
     BoxWithConstraints(Modifier.fillMaxSize().background(if (cover || (fullscreen && television)) Color.Black else palette.bg)) {
-        val split = !cover && !fullscreen && maxWidth > maxHeight
+        val width = maxWidth
+        val height = maxHeight
+        val split = !cover && !fullscreen && width > height
         when {
             cover || fullscreen -> {
-                Box(Modifier.fillMaxSize().focusGroup()) { stage() }
+                Box(Modifier.fillMaxSize()) { stage() }
             }
             split -> {
                 Row(Modifier.fillMaxSize()) {
-                    Box(Modifier.weight(1.2f).fillMaxHeight().focusGroup()) { stage() }
-                    Column(Modifier.weight(0.9f).fillMaxHeight().focusGroup()) {
+                    Box(Modifier.weight(1.2f).fillMaxHeight()) { stage() }
+                    Column(Modifier.weight(0.9f).fillMaxHeight()) {
                         FocusJump(
                             stringResource(R.string.to_player),
                             FocusDirection.Left,
@@ -195,7 +196,7 @@ fun PlayerScreen(
             }
             else -> {
                 Column(Modifier.fillMaxSize()) {
-                    Box(Modifier.fillMaxWidth().height(playbackStripHeight(maxWidth, maxHeight))) { stage() }
+                    Box(Modifier.fillMaxWidth().height(playbackStripHeight(width, height))) { stage() }
                     LazyColumn(
                         modifier = Modifier.weight(1f),
                         contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 16.dp),
@@ -384,7 +385,7 @@ private fun VideoStage(
         delay(3_000)
         chrome = false
     }
-    val showChrome = television || chrome
+    val showChrome = !fullscreen && (television || chrome)
     if (!compact && entry.kind != ContentKind.RADIO) KeepScreenOn()
     val density = LocalDensity.current
     val cornerPx = with(density) { 18.dp.toPx() }
@@ -454,7 +455,7 @@ private fun VideoStage(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        if (!compact && error != null) {
+        if (!compact && !fullscreen && error != null) {
             Column(Modifier.align(Alignment.Center).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(stringResource(R.string.player_error_title), color = Color.White, fontFamily = LocalAppFont.current, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
@@ -474,7 +475,7 @@ private fun VideoStage(
                     TextButton(onClick = { useEmbed = true; error = null }) { Text(stringResource(R.string.try_embed)) }
                 }
             }
-        } else if (!compact && waiting) {
+        } else if (!compact && !fullscreen && waiting) {
             CircularProgressIndicator(
                 modifier = Modifier.align(Alignment.Center).size(48.dp),
                 color = Color.White,
@@ -498,7 +499,7 @@ private fun VideoStage(
             )
         }
         if (!compact && showChrome) {
-            if (fullscreen || television) {
+            if (television) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -522,15 +523,13 @@ private fun VideoStage(
                         onToggleFavorite,
                         tint = if (favorite) palette.fav else Color(0xFF3A4673),
                     )
+                    Spacer(Modifier.width(8.dp))
+                    StageButton(
+                        Icons.Filled.OpenInFull,
+                        stringResource(R.string.full_screen),
+                        onToggleOrientation,
+                    )
                     if (television) {
-                        Spacer(Modifier.width(8.dp))
-                        StageButton(
-                            if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.OpenInFull,
-                            stringResource(if (fullscreen) R.string.exit_full_screen else R.string.full_screen),
-                            onToggleOrientation,
-                        )
-                    }
-                    if (television && !fullscreen) {
                         Spacer(Modifier.width(8.dp))
                         StageButton(
                             Icons.AutoMirrored.Filled.ArrowForward,
@@ -611,6 +610,10 @@ private fun RadioStage(
         }
         if (compact) {
             Equalizer(playing = radio.playing, modifier = Modifier.align(Alignment.Center).height(36.dp))
+            return@Box
+        }
+        if (fullscreen) {
+            Equalizer(playing = radio.playing, modifier = Modifier.align(Alignment.Center).height(80.dp))
             return@Box
         }
         Equalizer(playing = radio.playing, modifier = Modifier.align(Alignment.Center).height(80.dp))
