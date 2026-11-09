@@ -492,6 +492,7 @@ private fun PhoneShell(
                 onSettings = { navigator.openSection(AppScreen.Settings) },
                 onPrivacy = navigator::openPrivacy,
                 embedPlayback = embedPlayback,
+                commands = commands,
                 stage = if (floating || cover) {
                     {}
                 } else {
@@ -544,6 +545,7 @@ private fun ScreenBody(
     onSettings: () -> Unit,
     onPrivacy: () -> Unit,
     embedPlayback: Boolean,
+    commands: com.worldtv.app.ui.player.PlaybackCommands,
     stage: @Composable () -> Unit,
 ) {
     val queue by container.queue.state.collectAsStateWithLifecycle()
@@ -601,6 +603,7 @@ private fun ScreenBody(
             listIndex = catalogModel.channelScroll(catalog.selectedCodes.firstOrNull().orEmpty()).first,
             listOffset = catalogModel.channelScroll(catalog.selectedCodes.firstOrNull().orEmpty()).second,
             onSaveListPosition = catalogModel::saveChannelScroll,
+            commands = commands,
         )
         AppScreen.AllChannels -> AllChannelsPane(
             state = catalog,
@@ -630,8 +633,8 @@ private fun ScreenBody(
                 onOpen(entries, entry)
             },
             onToggleFavorite = catalogModel::toggleFavorite,
-            onOpenCountry = { kind, code ->
-                catalogModel.openCountry(kind, code)
+            onOpenCountry = { _, code ->
+                catalogModel.openFavoriteCountry(code)
                 onCountries()
             },
             onToggleCountry = catalogModel::toggleCountry,

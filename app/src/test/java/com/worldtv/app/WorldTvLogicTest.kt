@@ -6,6 +6,8 @@ import com.worldtv.app.data.DatasetParser
 import com.worldtv.app.data.DatasetClient
 import com.worldtv.app.data.FavoritesCodec
 import com.worldtv.app.data.FileTextCache
+import com.worldtv.app.domain.ChannelCategoryIndex
+import com.worldtv.app.domain.ChannelOrder
 import com.worldtv.app.domain.ContentKind
 import com.worldtv.app.domain.Country
 import com.worldtv.app.domain.CountryFlags
@@ -203,4 +205,26 @@ class CatalogBehaviorTest {
 
     private fun read(path: String): String =
         javaClass.classLoader!!.getResource(path)!!.readText()
+}
+
+class ChannelOrderTest {
+    @Test
+    fun earlierCategoryWinsWhenAChannelIsListedTwice() {
+        val index = ChannelCategoryIndex.build(
+            listOf("news", "general"),
+            mapOf("news" to listOf("a", "b"), "general" to listOf("b", "c")),
+        )
+        assertEquals("news", index["b"])
+        assertEquals("general", index["c"])
+    }
+
+    @Test
+    fun channelsSortByCategoryThenName() {
+        val news = MediaEntry("n", ContentKind.TV, "Zebra", "us", emptyList(), false, emptyList(), emptyList())
+        val sport = MediaEntry("s", ContentKind.TV, "Alpha", "us", emptyList(), false, emptyList(), emptyList())
+        val sorted = ChannelOrder.sort(listOf(sport, news)) { entry ->
+            if (entry.id == "n") "news" else "sports"
+        }
+        assertEquals(listOf("n", "s"), sorted.map { it.id })
+    }
 }

@@ -6,9 +6,16 @@ import com.worldtv.app.domain.ContentKind
 import com.worldtv.app.domain.Country
 import com.worldtv.app.domain.MediaEntry
 import com.worldtv.app.domain.UserNotice
+import com.worldtv.app.domain.ChannelCategories
+import com.worldtv.app.domain.ChannelCategoryIndex
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
@@ -64,10 +71,55 @@ class CatalogRepositoryImpl(
             DatasetParser.parseChannels(body, kind)
         }
 
+    override suspend fun loadCategoryIndex(kind: ContentKind, force: Boolean): Map<String, String> {
+        val path = "category-index/${kind.directory}.txt"
+        return gates.getOrPut(path) { Mutex() }.withLock {
+            if (!force) {
+                remembered<Map<String, String>>(path)?.let { return@withLock it }
+                val saved = cache.read(path)
+                if (saved != null) {
+                    val decoded = decodeIndex(saved.body)
+                    if (decoded.isNotEmpty()) {
+                        memory[path] = decoded
+                        return@withLock decoded
+                    }
+                }
+            }
+            val names = ChannelCategories.ordered(kind)
+            val limit = Semaphore(4)
+            val ids = coroutineScope {
+                names.map { name ->
+                    async(Dispatchers.IO) {
+                        limit.withPermit {
+                            val body = runCatching {
+                                client.fetchText("${kind.directory}/raw/categories/$name.json")
+                            }.getOrNull()
+                            name to (body?.let(DatasetParser::parseIds).orEmpty())
+                        }
+                    }
+                }.awaitAll().toMap()
+            }
+            if (ids.values.all { it.isEmpty() }) return@withLock emptyMap()
+            val index = ChannelCategoryIndex.build(names, ids)
+            cache.write(path, encodeIndex(index))
+            memory[path] = index
+            index
+        }
+    }
+
     override suspend fun clearCache() {
         memory.clear()
         cache.clear()
     }
+
+    private fun encodeIndex(index: Map<String, String>): String =
+        index.entries.joinToString("\n") { "${it.key}\t${it.value}" }
+
+    private fun decodeIndex(text: String): Map<String, String> =
+        text.lineSequence().mapNotNull { line ->
+            val parts = line.split('\t', limit = 2)
+            if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) parts[0] to parts[1] else null
+        }.toMap()
 
     private suspend fun <T> loadParsed(
         path: String,

@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.worldtv.app.data.FavoriteCountryStore
 import com.worldtv.app.domain.CatalogQuery
+import com.worldtv.app.domain.CatalogResult
 import com.worldtv.app.domain.CatalogRepository
+import com.worldtv.app.domain.ChannelOrder
 import com.worldtv.app.domain.ContentKind
 import com.worldtv.app.domain.Country
 import com.worldtv.app.domain.CountrySelection
@@ -15,8 +17,12 @@ import com.worldtv.app.domain.SettingsRepository
 import com.worldtv.app.domain.UserNotice
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
@@ -49,6 +55,7 @@ data class CatalogUiState(
     val allQuery: String = "",
     val allHits: List<MediaEntry> = emptyList(),
     val favoriteCountryKeys: Set<String> = emptySet(),
+    val mixedChannels: Boolean = false,
 ) {
     val visibleCountries: List<Country>
         get() = countries.filter { CountrySelection.matches(it, countryQuery) }
@@ -91,6 +98,9 @@ class CatalogViewModel(
     var countryListOffset: Int = 0
     var returnCountryCode: String? = null
     private val channelScroll = HashMap<String, Pair<Int, Int>>()
+    private var mixedCountry = false
+    private val pools = ConcurrentHashMap<ContentKind, List<MediaEntry>>()
+    private val categories = ConcurrentHashMap<ContentKind, Map<String, String>>()
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -118,6 +128,7 @@ class CatalogViewModel(
         countryListIndex = 0
         countryListOffset = 0
         returnCountryCode = null
+        mixedCountry = false
         val generation = nextGeneration()
         val query = stateFlow.value.countryQuery
         stateFlow.value = stateFlow.value.copy(
@@ -138,6 +149,7 @@ class CatalogViewModel(
             catalogError = null,
             searchHits = emptyList(),
             allHits = emptyList(),
+            mixedChannels = false,
         )
         viewModelScope.launch { loadKind(kind, force = false, generation = generation) }
         if (query.trim().length >= 2) ensureCatalog(kind)
@@ -220,7 +232,24 @@ class CatalogViewModel(
         return pool.randomOrNull()
     }
 
+    fun openFavoriteCountry(code: String) {
+        val normalized = code.lowercase()
+        mixedCountry = true
+        returnCountryCode = normalized
+        val generation = stateGeneration()
+        stateFlow.value = stateFlow.value.copy(
+            selectedCodes = setOf(normalized),
+            language = null,
+            channelQuery = "",
+            loadingChannels = true,
+            channelsError = null,
+            mixedChannels = true,
+        )
+        loadChannels(stateFlow.value.kind, setOf(normalized), force = false, generation = generation)
+    }
+
     fun setCountries(codes: Set<String>) {
+        mixedCountry = false
         val normalized = codes.map { it.lowercase() }.toSet()
         val generation = stateGeneration()
         stateFlow.value = stateFlow.value.copy(
@@ -229,6 +258,7 @@ class CatalogViewModel(
             channelQuery = "",
             loadingChannels = true,
             channelsError = null,
+            mixedChannels = false,
         )
         viewModelScope.launch {
             settings.setSelectedCountries(stateFlow.value.kind, normalized)
@@ -295,20 +325,33 @@ class CatalogViewModel(
             stateFlow.value = stateFlow.value.copy(channels = emptyList(), loadingChannels = false, channelsError = null)
             return
         }
+        val mix = mixedCountry
         channelJob = viewModelScope.launch {
-            stateFlow.value = stateFlow.value.copy(loadingChannels = true)
-            val pool = catalogPool(kind, force)
-            if (!isCurrent(generation) || stateFlow.value.kind != kind) return@launch
+            stateFlow.value = stateFlow.value.copy(loadingChannels = true, mixedChannels = mix)
             val wanted = codes.map { it.lowercase() }.toSet()
-            val channels = withContext(Dispatchers.Default) { pool.filter { it.countryCode in wanted } }
+            val channels = if (mix) {
+                val merged = coroutineScope {
+                    ContentKind.entries.map { item -> async { ensurePool(item, force) } }.awaitAll()
+                }
+                if (!isCurrent(generation)) return@launch
+                withContext(Dispatchers.Default) {
+                    sortEntries(merged.flatten().filter { it.countryCode in wanted })
+                }
+            } else {
+                val pool = catalogPool(kind, force)
+                if (!isCurrent(generation) || stateFlow.value.kind != kind) return@launch
+                withContext(Dispatchers.Default) { pool.filter { it.countryCode in wanted } }
+            }
+            if (!isCurrent(generation) || stateFlow.value.kind != kind) return@launch
             val language = stateFlow.value.language
             val languageStillValid = language == null || channels.any { entry ->
                 entry.languages.any { it.equals(language, ignoreCase = true) }
             }
-            val failed = channels.isEmpty() && pool.isEmpty()
+            val failed = channels.isEmpty() && !mix && pools[kind].isNullOrEmpty()
             stateFlow.value = stateFlow.value.copy(
                 channels = channels,
                 loadingChannels = false,
+                mixedChannels = mix,
                 channelsError = if (failed) stateFlow.value.catalogError else null,
                 language = if (languageStillValid) language else null,
             )
@@ -329,15 +372,34 @@ class CatalogViewModel(
     private suspend fun catalogPool(kind: ContentKind, force: Boolean): List<MediaEntry> {
         val current = stateFlow.value
         if (!force && current.catalogKind == kind && current.catalogChannels.isNotEmpty()) {
+            pools[kind] = current.catalogChannels
             if (current.loadingCatalog) {
                 stateFlow.value = current.copy(loadingCatalog = false)
             }
             return current.catalogChannels
         }
-        stateFlow.value = stateFlow.value.copy(loadingCatalog = true, catalogKind = kind, catalogError = null)
-        val result = catalog.loadAllChannels(kind, force)
-        if (stateFlow.value.kind != kind) return result.value.orEmpty()
-        val loaded = result.value ?: stateFlow.value.catalogChannels
+        if (stateFlow.value.kind == kind) {
+            stateFlow.value = stateFlow.value.copy(loadingCatalog = true, catalogKind = kind, catalogError = null)
+        }
+        return ensurePool(kind, force)
+    }
+
+    private suspend fun ensurePool(kind: ContentKind, force: Boolean): List<MediaEntry> {
+        if (!force) {
+            pools[kind]?.let { return it }
+        }
+        val result: CatalogResult<List<MediaEntry>>
+        val index: Map<String, String>
+        coroutineScope {
+            val channelsCall = async { catalog.loadAllChannels(kind, force) }
+            val indexCall = async { catalog.loadCategoryIndex(kind, force) }
+            result = channelsCall.await()
+            index = indexCall.await()
+        }
+        if (index.isNotEmpty()) categories[kind] = index
+        val loaded = sortEntries(result.value ?: pools[kind].orEmpty())
+        if (result.value != null || loaded.isNotEmpty()) pools[kind] = loaded
+        if (stateFlow.value.kind != kind) return loaded
         val query = stateFlow.value.countryQuery
         val allQuery = stateFlow.value.allQuery
         val hits = withContext(Dispatchers.Default) { CatalogQuery.search(loaded, query) }
@@ -357,6 +419,9 @@ class CatalogViewModel(
         )
         return loaded
     }
+
+    private fun sortEntries(entries: List<MediaEntry>): List<MediaEntry> =
+        ChannelOrder.sort(entries) { entry -> categories[entry.kind]?.get(entry.id).orEmpty() }
 
     private fun publishAll(entries: List<MediaEntry>, query: String, kind: ContentKind) {
         allSearchJob?.cancel()

@@ -86,6 +86,22 @@ object DatasetParser {
         return entries
     }
 
+    fun parseIds(json: String): List<String> {
+        val trimmed = json.trim()
+        if (!trimmed.startsWith("[")) return emptyList()
+        val array = try {
+            JSONArray(trimmed)
+        } catch (_: Exception) {
+            return emptyList()
+        }
+        val ids = ArrayList<String>(array.length())
+        for (index in 0 until array.length()) {
+            val id = array.optJSONObject(index)?.optString("nanoid")?.trim().orEmpty()
+            if (id.isNotEmpty()) ids += id
+        }
+        return ids
+    }
+
     private fun stringList(source: JSONObject?, key: String): List<String> {
         if (source == null) return emptyList()
         val array = source.optJSONArray(key) ?: return emptyList()

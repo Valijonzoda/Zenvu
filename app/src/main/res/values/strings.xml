@@ -26,6 +26,8 @@
     <string name="next">Next</string>
     <string name="stop">Stop</string>
     <string name="favorite_add">Add to favorites</string>
+    <string name="favorite_added">Added to favorites</string>
+    <string name="favorite_already">Already in favorites</string>
     <string name="favorite_remove">Remove from favorites</string>
     <string name="region_locked">Region locked</string>
     <string name="no_channels">No channels</string>

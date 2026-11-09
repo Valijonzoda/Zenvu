@@ -87,6 +87,11 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
@@ -130,6 +135,7 @@ class PlaybackCommands {
     val playing = MutableStateFlow(false)
     val buffering = MutableStateFlow(false)
     var toggle: () -> Unit = {}
+    var focusList: (() -> Unit)? = null
 }
 
 @Composable
@@ -499,6 +505,7 @@ private fun VideoStage(
                     }
                 },
                 modifier = Modifier.align(Alignment.Center),
+                toList = commands,
             )
         }
         if (!compact && showChrome && television) {
@@ -507,6 +514,7 @@ private fun VideoStage(
                 stringResource(R.string.full_screen),
                 onToggleOrientation,
                 modifier = Modifier.align(Alignment.CenterEnd).padding(12.dp),
+                toList = commands,
             )
         }
         if (!compact && showChrome && !television) {
@@ -518,6 +526,7 @@ private fun VideoStage(
                         onToggleOrientation()
                     },
                     modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
+                    toList = commands,
                 )
         }
     }
@@ -592,6 +601,7 @@ private fun RadioStage(
                 stringResource(R.string.full_screen),
                 onToggleOrientation,
                 modifier = Modifier.align(Alignment.CenterEnd).padding(12.dp),
+                toList = commands,
             )
             return@Box
         }
@@ -616,9 +626,9 @@ private fun RadioStage(
                     CircularProgressIndicator(color = Color.White, modifier = Modifier.size(36.dp), strokeWidth = 3.dp)
                 }
             } else {
-                PlayOrb(playing = radio.playing, large = true, onClick = container.radio::toggle)
+                PlayOrb(playing = radio.playing, large = true, onClick = container.radio::toggle, toList = commands)
             }
-            StageButton(Icons.Filled.SkipNext, stringResource(R.string.next), container.queue::next)
+            StageButton(Icons.Filled.SkipNext, stringResource(R.string.next), container.queue::next, toList = commands)
         }
         if (radio.error != null) {
             Column(Modifier.align(Alignment.BottomCenter).padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -729,13 +739,20 @@ private fun GestureLayer(
 }
 
 @Composable
-private fun PlayOrb(playing: Boolean, large: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun PlayOrb(
+    playing: Boolean,
+    large: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    toList: PlaybackCommands? = null,
+) {
     val palette = LocalWt.current
     val size = if (large) 72.dp else 68.dp
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     Box(
         modifier = modifier
+            .moveToList(toList, right = false, down = true)
             .size(size)
             .border(if (focused) 3.dp else 0.dp, Color.White, CircleShape)
             .clip(CircleShape)
@@ -759,12 +776,14 @@ private fun StageButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     tint: Color = Color(0xFF3A4673),
+    toList: PlaybackCommands? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val pulse = focusAlpha(focused)
     Box(
         modifier
+            .moveToList(toList, right = true, down = true)
             .size(48.dp)
             .border(if (focused) 4.dp else 0.dp, Color.White.copy(alpha = pulse), CircleShape)
             .clip(CircleShape)
@@ -802,6 +821,18 @@ private fun Equalizer(playing: Boolean, modifier: Modifier = Modifier) {
                     .background(Color.White, RoundedCornerShape(4.dp)),
             )
         }
+    }
+}
+
+private fun Modifier.moveToList(commands: PlaybackCommands?, right: Boolean, down: Boolean): Modifier {
+    if (commands == null || (!right && !down)) return this
+    return onPreviewKeyEvent { event ->
+        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+        val matched = (right && event.key == Key.DirectionRight) || (down && event.key == Key.DirectionDown)
+        if (!matched) return@onPreviewKeyEvent false
+        val action = commands.focusList ?: return@onPreviewKeyEvent false
+        action()
+        true
     }
 }
 

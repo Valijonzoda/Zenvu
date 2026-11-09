@@ -1,10 +1,13 @@
 package com.worldtv.app.ui.components
 
+import android.widget.Toast
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -46,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -58,7 +62,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -342,6 +353,7 @@ fun FlagBadge(code: String, width: Dp, height: Dp) {
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun ChannelCard(
     entry: MediaEntry,
@@ -351,12 +363,19 @@ fun ChannelCard(
     favoriteTags: Boolean = false,
     playing: Boolean = false,
     subtitle: String? = null,
+    showKind: Boolean = false,
+    focusRequester: FocusRequester? = null,
 ) {
     val palette = LocalWt.current
+    val context = LocalContext.current
     val shape = RoundedCornerShape(20.dp)
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val pulse = focusAlpha(focused)
+    var burst by remember { mutableIntStateOf(0) }
+    var longPress by remember { mutableStateOf(false) }
+    val addedText = stringResource(R.string.favorite_added)
+    val alreadyText = stringResource(R.string.favorite_already)
     val cardColor = when {
         focused -> lerp(palette.surface, palette.accent, 0.5f * pulse)
         !playing -> palette.surface
@@ -368,13 +387,50 @@ fun ChannelCard(
         playing -> palette.accent
         else -> Color.Transparent
     }
+    fun holdFavorite() {
+        burst += 1
+        val message = if (favorite) alreadyText else addedText
+        if (!favorite) onToggleFavorite()
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
+    Box(Modifier.fillMaxWidth()) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .clip(shape)
             .background(cardColor)
             .border(2.dp, borderColor, shape)
-            .clickable(interactionSource = interaction, indication = null, onClick = onOpen)
+            .onPreviewKeyEvent { event ->
+                val select = event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter
+                if (!select) return@onPreviewKeyEvent false
+                when (event.type) {
+                    KeyEventType.KeyDown -> {
+                        if (event.nativeKeyEvent.repeatCount == 1) {
+                            longPress = true
+                            holdFavorite()
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    KeyEventType.KeyUp -> {
+                        if (longPress) {
+                            longPress = false
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    else -> false
+                }
+            }
+            .combinedClickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = onOpen,
+                onLongClick = ::holdFavorite,
+            )
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -392,7 +448,8 @@ fun ChannelCard(
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (playing) MetaTag(stringResource(R.string.now_playing), TagKind.Live)
-                    else if (entry.kind == ContentKind.TV && !favoriteTags) MetaTag(stringResource(R.string.tag_live), TagKind.Live)
+                    else if (entry.kind == ContentKind.TV && !favoriteTags && !showKind) MetaTag(stringResource(R.string.tag_live), TagKind.Live)
+                    if (showKind) MetaTag(stringResource(entry.kind.labelRes()), TagKind.Plain)
                     if (favoriteTags) {
                         MetaTag(stringResource(entry.kind.labelRes()), TagKind.Plain)
                         MetaTag(entry.countryCode.uppercase(), TagKind.Plain)
@@ -404,6 +461,33 @@ fun ChannelCard(
         }
         HeartButton(favorite, onToggleFavorite)
     }
+        if (burst > 0) {
+            HeartBurst(burst, palette.fav, Modifier.align(Alignment.Center))
+        }
+    }
+}
+
+@Composable
+private fun HeartBurst(token: Int, color: Color, modifier: Modifier = Modifier) {
+    val scale = remember { Animatable(0.4f) }
+    val alpha = remember { Animatable(0f) }
+    LaunchedEffect(token) {
+        scale.snapTo(0.4f)
+        alpha.snapTo(1f)
+        scale.animateTo(1.35f, tween(220))
+        alpha.animateTo(0f, tween(180))
+    }
+    Icon(
+        Icons.Filled.Favorite,
+        contentDescription = null,
+        tint = color.copy(alpha = alpha.value),
+        modifier = modifier
+            .size(64.dp)
+            .graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+            },
+    )
 }
 
 enum class TagKind { Plain, Region, Live }

@@ -13,6 +13,8 @@ interface CatalogRepository {
 
     suspend fun loadAllChannels(kind: ContentKind, force: Boolean): CatalogResult<List<MediaEntry>>
 
+    suspend fun loadCategoryIndex(kind: ContentKind, force: Boolean): Map<String, String>
+
     suspend fun clearCache()
 }
 

@@ -42,6 +42,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,6 +71,7 @@ import com.worldtv.app.R
 import com.worldtv.app.domain.CountrySelection
 import com.worldtv.app.domain.CatalogQuery
 import com.worldtv.app.domain.ContentKind
+import com.worldtv.app.ui.player.PlaybackCommands
 import com.worldtv.app.domain.UserNotice
 import com.worldtv.app.domain.MediaEntry
 import com.worldtv.app.domain.ThemeChoice
@@ -275,6 +278,7 @@ fun CountryChannelsPane(
     listIndex: Int = 0,
     listOffset: Int = 0,
     onSaveListPosition: (String, Int, Int) -> Unit = { _, _, _ -> },
+    commands: PlaybackCommands? = null,
     modifier: Modifier = Modifier,
 ) {
     val channels = remember(state.channels, state.channelQuery, state.language, state.favoritesOnly, state.favoriteKeys) {
@@ -309,6 +313,7 @@ fun CountryChannelsPane(
                         listIndex = listIndex,
                         listOffset = listOffset,
                         onSaveListPosition = onSaveListPosition,
+                        commands = commands,
                         modifier = Modifier.weight(0.9f).fillMaxHeight(),
                     )
                 }
@@ -331,6 +336,7 @@ fun CountryChannelsPane(
                         listIndex = listIndex,
                         listOffset = listOffset,
                         onSaveListPosition = onSaveListPosition,
+                        commands = commands,
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                     )
                 }
@@ -353,12 +359,41 @@ private fun CountryChannelBrowser(
     listIndex: Int = 0,
     listOffset: Int = 0,
     onSaveListPosition: (String, Int, Int) -> Unit = { _, _, _ -> },
+    commands: PlaybackCommands? = null,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalWt.current
     val country = state.countries.firstOrNull { it.code in state.selectedCodes }
-    val countryCode = country?.code.orEmpty()
+    val countryCode = country?.code ?: state.selectedCodes.firstOrNull().orEmpty()
     val listState = rememberLazyListState(listIndex, listOffset)
+    val requester = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
+    val latestChannels = rememberUpdatedState(channels)
+    val latestPlaying = rememberUpdatedState(playingKey)
+    var pinnedKey by remember(countryCode) { mutableStateOf<String?>(null) }
+    suspend fun focusKey(key: String) {
+        pinnedKey = key
+        val index = latestChannels.value.indexOfFirst { it.key == key }
+        if (index >= 0) listState.scrollToItem(index)
+        kotlinx.coroutines.delay(70)
+        runCatching { requester.requestFocus() }
+    }
+    LaunchedEffect(countryCode, playingKey, state.loadingChannels, channels.isEmpty()) {
+        if (state.loadingChannels || channels.isEmpty()) return@LaunchedEffect
+        val key = playingKey?.takeIf { id -> channels.any { it.key == id } } ?: channels.first().key
+        focusKey(key)
+    }
+    DisposableEffect(commands) {
+        val target = commands
+        target?.focusList = {
+            val list = latestChannels.value
+            val key = latestPlaying.value?.takeIf { id -> list.any { it.key == id } } ?: list.firstOrNull()?.key
+            if (key != null) scope.launch { focusKey(key) }
+        }
+        onDispose {
+            if (target?.focusList != null) target.focusList = null
+        }
+    }
     DisposableEffect(countryCode) {
         onDispose { onSaveListPosition(countryCode, listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) }
     }
@@ -381,9 +416,13 @@ private fun CountryChannelBrowser(
                         fontSize = 18.sp,
                         maxLines = 1,
                     )
-                    val count = if (state.loadingChannels) country.channelCount else state.channels.size
+                    val countLabel = when {
+                        state.loadingChannels && state.channels.isEmpty() -> "…"
+                        state.mixedChannels -> pluralStringResource(R.plurals.channel_count, state.channels.size, state.channels.size)
+                        else -> kindCount(state.kind, if (state.loadingChannels) country.channelCount else state.channels.size)
+                    }
                     Text(
-                        "${kindCount(state.kind, count)} · ${country.capital}",
+                        "$countLabel · ${country.capital}",
                         color = palette.muted,
                         fontSize = 14.sp,
                         fontFamily = LocalAppFont.current,
@@ -416,7 +455,16 @@ private fun CountryChannelBrowser(
             contentPadding = PaddingValues(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            countryChannelItems(state, channels, playingKey, onRefresh, onOpen, onToggleFavorite)
+            countryChannelItems(
+                state,
+                channels,
+                playingKey,
+                onRefresh,
+                onOpen,
+                onToggleFavorite,
+                pinnedKey,
+                requester,
+            )
         }
     }
 }
@@ -428,6 +476,8 @@ private fun LazyListScope.countryChannelItems(
     onRefresh: () -> Unit,
     onOpen: (List<MediaEntry>, MediaEntry) -> Unit,
     onToggleFavorite: (MediaEntry) -> Unit,
+    focusKey: String?,
+    requester: FocusRequester,
 ) {
     when {
         state.loadingChannels && state.channels.isEmpty() -> item { LoadingRows(card = true) }
@@ -446,6 +496,8 @@ private fun LazyListScope.countryChannelItems(
                 entry = entry,
                 favorite = entry.key in state.favoriteKeys,
                 playing = entry.key == playingKey,
+                showKind = state.mixedChannels,
+                focusRequester = if (entry.key == focusKey) requester else null,
                 onOpen = { onOpen(channels, entry) },
                 onToggleFavorite = { onToggleFavorite(entry) },
             )
