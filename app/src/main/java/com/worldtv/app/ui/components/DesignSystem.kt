@@ -75,8 +75,6 @@ import com.worldtv.app.R
 import com.worldtv.app.domain.ContentKind
 import com.worldtv.app.domain.CountryFlags
 import com.worldtv.app.domain.MediaEntry
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import com.worldtv.app.ui.theme.LocalFocusPulse
 import com.worldtv.app.ui.theme.LocalWt
 import com.worldtv.app.ui.theme.LocalAppFont

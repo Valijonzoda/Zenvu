@@ -760,7 +760,7 @@ private fun RadioStage(
                 modifier = Modifier.align(Alignment.CenterEnd).padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                StageButton(Icons.Filled.Settings, stringResource(R.string.player_settings)) { radioOptions = !radioOptions }
+                StageButton(Icons.Filled.Settings, stringResource(R.string.player_settings), onClick = { radioOptions = !radioOptions })
                 StageButton(Icons.Filled.OpenInFull, stringResource(R.string.full_screen), onToggleOrientation)
             }
             return@Box
