@@ -92,7 +92,7 @@ class CatalogRepositoryImpl(
                     async(Dispatchers.IO) {
                         limit.withPermit {
                             val body = runCatching {
-                                client.fetchText("${kind.directory}/raw/categories/$name.json")
+                                client.fetchText(DatasetPaths.category(kind, name))
                             }.getOrNull()
                             name to (body?.let(DatasetParser::parseIds).orEmpty())
                         }

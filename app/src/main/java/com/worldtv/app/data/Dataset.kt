@@ -16,19 +16,22 @@ class DatasetException(
 
 /**
  * Paths verified from https://github.com/famelack/famelack-data
- * Raw JSON is used. The compressed copies are gzip payloads with a .json name.
+ * Plain JSON lives directly under tv, radio, and webcams.
  */
 object DatasetPaths {
     const val BASE = "https://raw.githubusercontent.com/famelack/famelack-data/main/"
 
     fun countriesMetadata(kind: ContentKind): String =
-        "${kind.directory}/raw/countries_metadata.json"
+        "${kind.directory}/countries_metadata.json"
 
     fun countryChannels(kind: ContentKind, code: String): String =
-        "${kind.directory}/raw/countries/${code.lowercase()}.json"
+        "${kind.directory}/countries/${code.lowercase()}.json"
 
     fun allChannels(kind: ContentKind): String =
-        "${kind.directory}/raw/categories/all.json"
+        "${kind.directory}/categories/all.json"
+
+    fun category(kind: ContentKind, name: String): String =
+        "${kind.directory}/categories/$name.json"
 }
 
 object DatasetParser {
