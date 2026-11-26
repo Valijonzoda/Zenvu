@@ -1,23 +1,41 @@
 ---
-title: Zenvu
+layout: landing
+title: Zenvu — бесплатное ТВ, радио и камеры
+description: Бесплатное приложение Zenvu для Android. Скачайте APK и установите его, если Android пишет, что файл небезопасен.
+lang: ru
 permalink: /
+home: /
+other_url: /en/
+other_label: English
+headline: Прямые эфиры на Android
+lead: Телеканалы, радио и камеры в одном приложении. Zenvu бесплатное, без подписки и без оплаты.
+free: Бесплатно навсегда
+download: Скачать бесплатно
+version_label: APK для Android
+apk: https://github.com/Valijonzoda/Zenvu/releases/download/v1.0.17/Zenvu-1.0.17.apk
+f1_title: Телевидение
+f1_text: Живые каналы по странам, сразу на телефоне или телевизоре.
+f2_title: Радио
+f2_text: Станции играют в фоне, пока телефон занят другим.
+f3_title: Камеры
+f3_text: Городские и природные камеры рядом с телеканалами.
+install_title: Как установить
+install_intro: Кнопка выше сразу скачивает APK. Android предупреждает, потому что файл ставится не из Play Маркета. Это обычное предупреждение, а не поломка файла.
+s1_title: Скачайте файл
+s1_text: Нажмите «Скачать бесплатно». Если браузер пишет, что файл может быть опасен, выберите «Скачать в любом случае».
+s2_title: Откройте загрузку
+s2_text: Откройте уведомление о скачанном файле или найдите Zenvu APK в папке «Загрузки».
+s3_title: Разрешите установку
+s3_text: Если телефон пишет «небезопасно», «приложение заблокировано» или «установка неизвестных приложений запрещена», нажмите «Настройки» и разрешите установку для браузера или «Файлов». Затем вернитесь и нажмите «Установить». Если Play Защита показывает «Подробнее», откройте её и выберите «Всё равно установить».
+s4_title: Откройте Zenvu
+s4_text: После установки нажмите «Открыть». При первом запуске нужен интернет, чтобы один раз скачать список каналов.
+warn: Предупреждение не просит оплату и не значит, что нужно покупать приложение. Zenvu остаётся бесплатным.
+privacy: /ru/privacy/
+privacy_label: Конфиденциальность
+terms: /ru/terms/
+terms_label: Условия
+delete: /ru/delete-account/
+delete_label: Удаление аккаунта
+dmca: /ru/dmca/
+dmca_label: Авторские права
 ---
-
-[Русский]({{ '/ru/' | relative_url }})
-
-# Zenvu
-
-Zenvu is an independent Android directory of publicly available live TV, online radio and webcam streams. It runs on phones, Android TV and Google TV.
-
-Zenvu does not host, own or control any video or audio streams. It is not an official client of any channel and is not affiliated with Famelack or iptv-org. Channel listings come from a public dataset (MIT license, Copyright 2026 Famelack LLC).
-
-- [Privacy Policy]({{ '/privacy/' | relative_url }})
-- [Terms of Use]({{ '/terms/' | relative_url }})
-- [Delete your account and data]({{ '/delete-account/' | relative_url }})
-- [Copyright and DMCA]({{ '/dmca/' | relative_url }})
-- Download: https://github.com/Valijonzoda/Zenvu/releases
-- Source code: https://github.com/Valijonzoda/Zenvu
-
-Contact: [valijonzodafirdavs@gmail.com](mailto:valijonzodafirdavs@gmail.com)
-
-[Privacy Policy]({{ '/privacy/' | relative_url }}) · [Terms of Use]({{ '/terms/' | relative_url }}) · [Delete your account and data]({{ '/delete-account/' | relative_url }}) · [Copyright and DMCA]({{ '/dmca/' | relative_url }})

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="{{ page.lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page.title }}</title>
+  <meta name="description" content="{{ page.description }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=Unbounded:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ '/assets/landing.css' | relative_url }}">
+</head>
+<body>
+  <div class="sky"></div>
+  <main class="wrap">
+    <header class="top">
+      <a class="brand" href="{{ page.home | relative_url }}">
+        <span class="mark" aria-hidden="true"><span></span></span>
+        ZENVU
+      </a>
+      <a class="lang" href="{{ page.other_url | relative_url }}">{{ page.other_label }}</a>
+    </header>
+
+    <section class="hero">
+      <div>
+        <h1>{{ page.headline }}</h1>
+        <p class="lead">{{ page.lead }}</p>
+        <div class="free">{{ page.free }}</div>
+        <div class="actions">
+          <a class="cta" id="download" href="{{ page.apk }}">{{ page.download }}</a>
+          <span class="version" id="version">{{ page.version_label }}</span>
+        </div>
+      </div>
+      <div class="screen" aria-hidden="true">
+        <div class="screen-top">
+          <span>Zenvu</span>
+          <span class="pill">LIVE</span>
+        </div>
+        <div class="rows">
+          <div class="row"><span class="flag"></span><span style="flex:1"><span class="bar"></span><span class="bar short"></span></span><span class="live-dot"></span></div>
+          <div class="row"><span class="flag b"></span><span style="flex:1"><span class="bar"></span><span class="bar short"></span></span><span class="live-dot"></span></div>
+          <div class="row"><span class="flag c"></span><span style="flex:1"><span class="bar"></span><span class="bar short"></span></span><span class="live-dot"></span></div>
+          <div class="row"><span class="flag d"></span><span style="flex:1"><span class="bar"></span><span class="bar short"></span></span><span class="live-dot"></span></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="features">
+      <div class="feature"><strong>{{ page.f1_title }}</strong><span>{{ page.f1_text }}</span></div>
+      <div class="feature"><strong>{{ page.f2_title }}</strong><span>{{ page.f2_text }}</span></div>
+      <div class="feature"><strong>{{ page.f3_title }}</strong><span>{{ page.f3_text }}</span></div>
+    </div>
+
+    <section class="panel" id="install">
+      <h2>{{ page.install_title }}</h2>
+      <p class="intro">{{ page.install_intro }}</p>
+      <div class="steps">
+        <article class="step"><span class="num">1</span><div><h3>{{ page.s1_title }}</h3><p>{{ page.s1_text }}</p></div></article>
+        <article class="step"><span class="num">2</span><div><h3>{{ page.s2_title }}</h3><p>{{ page.s2_text }}</p></div></article>
+        <article class="step"><span class="num">3</span><div><h3>{{ page.s3_title }}</h3><p>{{ page.s3_text }}</p></div></article>
+        <article class="step"><span class="num">4</span><div><h3>{{ page.s4_title }}</h3><p>{{ page.s4_text }}</p></div></article>
+      </div>
+      <p class="warn">{{ page.warn }}</p>
+    </section>
+
+    <footer class="foot">
+      <a href="{{ page.privacy | relative_url }}">{{ page.privacy_label }}</a>
+      <a href="{{ page.terms | relative_url }}">{{ page.terms_label }}</a>
+      <a href="{{ page.delete | relative_url }}">{{ page.delete_label }}</a>
+      <a href="{{ page.dmca | relative_url }}">{{ page.dmca_label }}</a>
+      <a href="https://github.com/Valijonzoda/Zenvu">GitHub</a>
+    </footer>
+  </main>
+  <script>
+    fetch("https://api.github.com/repos/Valijonzoda/Zenvu/releases/latest")
+      .then(function (response) { return response.json(); })
+      .then(function (data) {
+        var assets = data.assets || [];
+        var apk = assets.find(function (asset) { return /\.apk$/i.test(asset.name); });
+        if (!apk) return;
+        var button = document.getElementById("download");
+        button.href = apk.browser_download_url;
+        var version = document.getElementById("version");
+        if (data.tag_name) version.textContent = data.tag_name;
+      })
+      .catch(function () {});
+  </script>
+</body>
+</html>
